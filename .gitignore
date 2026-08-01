@@ -7,5 +7,8 @@ vps-img-paste.env
 build/
 *.app/
 
+# Local Hermes implementation plans and session artifacts
+.hermes/
+
 # macOS
 .DS_Store

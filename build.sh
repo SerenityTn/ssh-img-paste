@@ -4,7 +4,8 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 APP="${APP_DIR:-$HOME/Applications}/VpsImgPaste.app"
-SRC="src/VpsImgPaste.swift"
+SRC_FILES=(src/*.swift)
+ARCH="$(uname -m)"
 
 echo "Building $APP ..."
 rm -rf "$APP"
@@ -29,6 +30,13 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 </plist>
 PLIST
 
-swiftc -O -o "$APP/Contents/MacOS/VpsImgPaste" "$SRC" -framework AppKit
-codesign --force --sign - "$APP" >/dev/null 2>&1 || true
+swiftc -O -target "$ARCH-apple-macos13.0" -o "$APP/Contents/MacOS/VpsImgPaste" "${SRC_FILES[@]}" -framework AppKit
+
+# A default ad-hoc signature uses the binary's changing cdhash as its designated
+# requirement. macOS TCC then treats every rebuilt app as a new Screen Recording
+# client. Keep the ad-hoc build, but give it a stable bundle-ID requirement so a
+# user's permission survives source rebuilds.
+codesign --force --sign - \
+  --requirements '=designated => identifier "com.khaireddine.vpsimgpaste"' \
+  "$APP"
 echo "✓ Built $APP"
