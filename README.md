@@ -1,257 +1,226 @@
-# VPS Image Paste
+<p align="center">
+  <img src="assets/AppIcon.svg" width="128" alt="VPS Image Paste app icon">
+</p>
+<h1 align="center">VPS Image Paste</h1>
+<p align="center">Send a Mac clipboard image or screenshot to any SSH host, then paste the remote path into your terminal.</p>
+<p align="center">
+  <a href="https://github.com/SerenityTn/vps-img-paste/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/SerenityTn/vps-img-paste/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/SerenityTn/vps-img-paste/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/SerenityTn/vps-img-paste"></a>
+  <a href="#requirements"><img alt="macOS 13 or newer" src="https://img.shields.io/badge/macOS-13%2B-111827?logo=apple"></a>
+  <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/github/license/SerenityTn/vps-img-paste"></a>
+</p>
 
-A tiny macOS menu-bar app that sends the image on your clipboard to a remote
-host over SSH in one click, then puts the uploaded file's remote path on your
-clipboard so you can paste it straight into a terminal / SSH session.
+VPS Image Paste is a native macOS menu-bar app and Bash CLI. It turns an image on your Mac into a remote file path that terminal tools can consume. No clipboard watcher, cloud account, daemon on the server, or proprietary protocol is required. Transfers use your existing OpenSSH setup.
 
-It exists because clipboard **image** paste can't cross an SSH session — the
-remote app reads the remote (headless) clipboard, not your Mac's. Pasting
-**text** works fine, though, and many CLI/agent tools auto-attach any on-disk
-file path they see. So this turns "clipboard image" into "clipboard path".
+![Native VPS profile manager with fixture destinations](docs/images/profile-manager.png)
 
-## Flow
+## Why it exists
 
-1. Copy an image, or screenshot to clipboard with **⌘⌃⇧4** — *optional*
-2. **Left-click the menu-bar icon** (📷) to upload to the active profile
-3. In your SSH session, **⌘V** the path and send → the tool attaches the image
+Text paste crosses an SSH session; image paste does not. Terminal agents and CLI tools can usually attach a file when you paste its path, so VPS Image Paste bridges the gap:
 
-If there's **no image on the clipboard**, clicking the icon instead lets you
-**drag to select a screen region** to upload (set `VPS_SHOT_MODE=full` for a
-whole-display grab). The right-click menu also has explicit **Capture Region →
-Profile…** and **Capture Full Screen → Profile…** items. Screenshots are named
-`shot-*.png` vs `clip-*.png`.
+1. Copy an image, or take a screenshot.
+2. Click the menu-bar icon.
+3. The app uploads a PNG over SCP.
+4. Paste the resulting remote path into the SSH session.
 
-The app only ever acts on an icon click — it has no global hotkey and does not
-watch the clipboard, so your normal keyboard-shortcut screenshots/copies are
-never touched. After an upload it puts the VPS path on the clipboard for the
-⌘V-into-SSH step, then **restores your previous clipboard** (image or text)
-after a grace window (`VPS_CLIP_RESTORE_SECONDS`, default 60s) so the link never
-lingers to be pasted into a Mac app by mistake.
+If the clipboard has no image, the app can capture a region or the full display. After the configured grace period, it restores the clipboard content that existed before the upload.
 
-The icon shows ↑ while uploading, ✓ on success, ⚠️ on failure.
+## Features
 
-**Right-click** (or ⌥-click) the icon for a menu that also lets you choose and
-manage destinations:
+- Native AppKit menu-bar app for macOS 13 and newer.
+- Clipboard image upload plus explicit region and full-screen capture.
+- Multiple named VPS profiles with persistent active-destination selection.
+- Native profile manager with add, edit, duplicate, rename, activate, connection test, and delete actions.
+- Uploaded-image listing, download/open, and confirmed remote cleanup.
+- Secure literal profile parser; profile files are never sourced or evaluated.
+- Existing `~/.ssh/config`, keychain, and SSH-agent support.
+- Apple Silicon and Intel source builds.
+- Standalone CLI with stable machine-readable profile output.
 
-- **Destination: Profile** — submenu listing configured profiles. Choosing a
-  profile runs `vps-img-paste profile use NAME`, so the selection is persistent
-  and becomes the active profile for future left-click uploads, menu actions,
-  and CLI commands that do not pass `--profile`. The submenu also includes
-  **Manage Profiles…**; if no usable destination exists it offers
-  **Add VPS Profile…** as empty-state recovery.
-- **Upload Clipboard Image / Screenshot → Profile** — uploads to the currently
-  active profile shown in the menu.
-- **Capture Region → Profile…** and **Capture Full Screen → Profile** — capture
-  and upload to the currently active profile shown in the menu.
-- **Uploaded Images (N, size)** — submenu listing images on the active profile;
-  click one to download and open it in Preview.
-- **Clean All Uploads (N)…** — deletes every uploaded image on the active
-  profile (with a confirmation; shown only when there are uploads).
-- **Quit**.
+## Quick start
 
-### Manage Profiles window
-
-**Manage Profiles…** opens the native profile manager. It supports:
-
-- **Add** a VPS profile, **edit** profiles that can be safely rewritten,
-  **duplicate**, **rename** with a dedicated rename action, **make active**,
-  **test connection**, and **delete**.
-- GUI-managed fields: immutable profile **ID** during normal editing, display
-  label, SSH host/alias, absolute remote home, and relative upload folder.
-  Advanced fields cover region/full screenshot mode and clipboard restore delay.
-- Manual/custom profile files are parsed without executing shell code. Files
-  with literal supported assignments plus unsupported extra statements remain
-  selectable, testable, and deletable, but are read-only in the GUI and offer
-  **Open in Text Editor** instead of pretending every shell expression is
-  editable. Dynamic values such as `VPS_HOST="${USER}@host"` are rejected; write
-  the literal target instead (for example `VPS_HOST="me@host"`).
-- Deleting the active profile requires choosing another usable profile first.
-  Deleting the last usable profile is blocked. Profile deletion removes only the
-  local profile configuration; it never deletes remote uploaded images.
-
-Security boundary: SSH passwords, private keys, custom ports, and ProxyJump/jump
-host settings are **never** stored or managed by VPS Image Paste. Keep them in
-`~/.ssh/config`. **Test Connection** is read-only and runs SSH in `BatchMode` so
-it is noninteractive and will not prompt for passwords.
-
-## CLI
-
-```sh
-vps-img-paste                       # upload to active profile
-vps-img-paste --profile work upload # upload once to profile "work"
-vps-img-paste list                  # SIZE<TAB>NAME on active profile, newest first
-vps-img-paste fetch NAME            # download NAME from active profile, print path
-vps-img-paste clean                 # delete active profile's uploaded images
-
-vps-img-paste profiles              # list configured profiles
-vps-img-paste profile current       # print active profile
-vps-img-paste profile create work \
-  --label "Work VPS" \
-  --host work-vps \
-  --remote-home /home/me \
-  --remote-dir img-uploads
-vps-img-paste profile create fallback \
-  --label "Fallback VPS" \
-  --host fallback-vps \
-  --remote-home /home/me \
-  --remote-dir img-uploads
-vps-img-paste profile create old-client \
-  --label "Old Client VPS" \
-  --host old-client-vps \
-  --remote-home /home/me \
-  --remote-dir img-uploads
-vps-img-paste profile use work      # make "work" the active profile
-vps-img-paste profile inspect work  # show non-secret profile configuration
-vps-img-paste profile update work --label "Work Laptop" --shot-mode full
-vps-img-paste profile rename work client-a
-vps-img-paste profile test client-a # read-only, BatchMode SSH connectivity check
-vps-img-paste profile delete old-client
-vps-img-paste profile delete client-a --switch-to fallback
-```
-
-`--profile NAME` is an explicit one-command override; it does not change the
-active profile. Left-click uploads, `list`, `fetch`, and `clean` use the active
-profile unless you pass an explicit profile override. Profile create/update
-commands manage only app-owned destination fields; do not put credentials,
-private-key paths, ports, or jump-host details in profile files. CLI deletion
-uses the same safeguards as the GUI: deleting an inactive profile, such as
-`old-client` above, can omit `--switch-to`; deleting the active profile requires
-a usable replacement (`profile delete client-a --switch-to fallback`), and
-deleting the last usable profile is blocked.
-
-> **Screen Recording permission:** the screenshot fallback needs it. The first
-> time it fires, grant it under **System Settings → Privacy & Security → Screen
-> Recording** for *VPS Image Paste*. Until then, a screenshot is blank/windowless.
-
-## Install (Homebrew)
+### Install with Homebrew
 
 ```sh
 brew install SerenityTn/tap/vps-img-paste
+brew services start vps-img-paste
 ```
 
-Then configure your default profile and start the menu-bar app:
-
-```sh
-mkdir -p ~/.config/vps-img-paste/profiles
-cp "$(brew --prefix)/share/vps-img-paste/vps-img-paste.env.example" \
-  ~/.config/vps-img-paste/profiles/default.env
-printf 'default\n' > ~/.config/vps-img-paste/active-profile
-$EDITOR ~/.config/vps-img-paste/profiles/default.env  # set VPS_HOST / VPS_REMOTE_HOME
-
-ssh your-vps-alias 'mkdir -p ~/img-uploads'     # create the upload dir
-brew services start vps-img-paste              # run now + at login
-```
-
-Upgrade later with `brew upgrade vps-img-paste`.
-
-### Install from source (no Homebrew)
-
-```sh
-git clone https://github.com/SerenityTn/vps-img-paste
-cd vps-img-paste
-./install.sh          # builds app to ~/Applications, symlinks CLI to ~/bin, login agent
-$EDITOR ~/.config/vps-img-paste/profiles/default.env
-```
-
-On a fresh source install, `install.sh` seeds
-`~/.config/vps-img-paste/profiles/default.env` and
-`~/.config/vps-img-paste/active-profile`. If it finds either the legacy config
-or existing named profiles, it leaves them untouched.
-
-## Configuration
-
-Named profiles live in:
-
-```text
-~/.config/vps-img-paste/profiles/<id>.env
-~/.config/vps-img-paste/active-profile   # contains the active <id>
-```
-
-Each GUI-managed profile is a small shell env file:
-
-```sh
-VPS_PROFILE_LABEL="Work VPS"      # optional; shown in menus/listings
-VPS_HOST="work-vps"               # user@host or ~/.ssh/config alias
-VPS_REMOTE_HOME="/home/me"        # absolute remote home for pasted paths
-VPS_REMOTE_DIR="img-uploads"      # optional; relative upload folder
-VPS_SHOT_MODE="region"            # optional; region or full
-VPS_CLIP_RESTORE_SECONDS="60"     # optional; 0 keeps the pasted path
-```
-
-The filename is the profile ID (`work.env` → `work`). The app treats that ID as
-immutable during normal editing; use the dedicated rename action/CLI command to
-change it. `VPS_REMOTE_HOME` must be the absolute destination base (normally the
-SSH account's home, such as `/home/sysadmin`). `VPS_REMOTE_DIR` is appended to
-it. Uploads, listing, fetching, cleanup, and the copied path all use that same
-absolute directory, so do not leave the example `/home/user` placeholder in a
-new profile.
-
-Profile files are parsed as data, not sourced as shell scripts. Supported fields
-must be literal assignments (quoted or unquoted): `VPS_HOST="me@work-vps"`, not
-`VPS_HOST="${USER}@work-vps"`, backticks, `$(...)`, or other shell expansion. If
-a legacy/manual profile contains commands, `source`, `export`, functions, or
-unsupported syntax in addition to valid literal values for the supported fields,
-the CLI can still select, inspect, test, and use it, but the GUI marks it manual
-and read-only. To migrate, replace dynamic supported values with their resolved
-literal values, move SSH options such as user, port, keys, and jump hosts into
-`~/.ssh/config`, then use `vps-img-paste profile inspect NAME` and
-`vps-img-paste profile test NAME` to verify the cleaned profile.
-
-Example with two destinations:
-
-```sh
-mkdir -p ~/.config/vps-img-paste/profiles
-cp vps-img-paste.env.example ~/.config/vps-img-paste/profiles/work.env
-cp vps-img-paste.env.example ~/.config/vps-img-paste/profiles/personal.env
-$EDITOR ~/.config/vps-img-paste/profiles/work.env
-$EDITOR ~/.config/vps-img-paste/profiles/personal.env
-vps-img-paste profile use work
-```
-
-The old single-file config at `~/.config/vps-img-paste.env` is still supported
-as backward-compatible profile `default`. It is never moved or deleted by the
-installer. While that legacy file exists, it takes precedence over
-`profiles/default.env`: the manager may show `profiles/default.env` as shadowed,
-but runtime uploads for profile `default` still read the legacy file. If you
-choose to delete the legacy `default` profile, the app warns that this removes
-the old local file and can reveal the previously shadowed `profiles/default.env`
-as the new default. To add named destinations without removing the legacy file,
-create a different ID such as `profiles/work.env`, then run
-`vps-img-paste profile use work`.
-
-Put SSH details in `~/.ssh/config`, not in profile env files:
+Secondary-click the new menu-bar icon, open **Destination**, choose **Manage Profiles**, and add a destination. Configure the remote login first if needed:
 
 ```sshconfig
 Host work-vps
   HostName 203.0.113.10
   User me
-  Port 2222
   IdentityFile ~/.ssh/work_ed25519
-  ProxyJump bastion
 ```
 
-Then set `VPS_HOST="work-vps"`. This keeps ports, keys, and jump hosts in the
-standard SSH place and lets `ssh`, `scp`, and this app share the same alias.
+Then use these profile values:
 
-## Components
+```text
+Display name: Work VPS
+SSH host or alias: work-vps
+Remote home: /home/me
+Upload folder: img-uploads
+```
 
-| Path | What |
-|------|------|
-| `bin/vps-img-paste` | The upload script (clipboard image → scp → clipboard path). Works standalone in a terminal too. |
-| `src/VpsImgPaste.swift` | The AppKit menu-bar app; on click it runs `~/bin/vps-img-paste`. |
-| `build.sh` | Compiles the app into `~/Applications/VpsImgPaste.app`. |
-| `install.sh` / `uninstall.sh` | Set up / tear down the symlink, app, and LaunchAgent. |
-| `vps-img-paste.env.example` | Template for legacy config or named profile env files. |
+Create the remote folder once:
+
+```sh
+ssh work-vps 'mkdir -p ~/img-uploads'
+```
+
+Left-click the menu-bar icon to upload. Secondary-click it to switch destinations, capture explicitly, load uploaded images, manage profiles, or clean the active destination.
+
+### Install from source
+
+```sh
+git clone https://github.com/SerenityTn/vps-img-paste.git
+cd vps-img-paste
+./install.sh
+```
+
+The source installer builds `~/Applications/VpsImgPaste.app`, links the CLI at `~/bin/vps-img-paste`, and starts a user LaunchAgent. Existing legacy or named profile configuration is preserved.
+
+## Menu behavior
+
+| Action | Result |
+| --- | --- |
+| Left-click | Upload the clipboard image; if none exists, use the configured screenshot fallback. |
+| Secondary-click or Option-click | Open the destination and upload menu. |
+| Destination | Persistently change the active profile or open the profile manager. |
+| Capture Region | Request Screen Recording access, select a region, and upload it. |
+| Capture Full Screen | Capture the main display and upload it. |
+| Uploaded Images | Load/refresh remote PNGs, then download one and open it in Preview. |
+| Clean All Uploads | Confirm and delete PNG uploads from the selected profile's configured remote directory. |
+
+The status icon changes while work is in progress and briefly shows success or failure. The app acts only when you invoke it; it does not monitor the clipboard or register a global hotkey.
+
+## CLI examples
+
+```sh
+vps-img-paste                       # upload to the active profile
+vps-img-paste --profile work upload # one-command profile override
+vps-img-paste region                # capture a region and upload
+vps-img-paste list                  # SIZE<TAB>NAME, newest first
+vps-img-paste fetch NAME.png        # download and print the local path
+
+vps-img-paste profiles
+vps-img-paste profile current
+vps-img-paste profile use work
+vps-img-paste profile inspect work
+vps-img-paste profile test work
+```
+
+See [the complete CLI reference](docs/CLI.md) for profile creation, updates, rename, deletion, output contracts, and exit behavior.
+
+## Configuration
+
+Named profiles live under:
+
+```text
+~/.config/vps-img-paste/profiles/<id>.env
+~/.config/vps-img-paste/active-profile
+```
+
+The app stores a label, SSH host or alias, absolute remote home, relative upload folder, screenshot mode, and clipboard restore delay. Passwords, private keys, ports, and jump-host configuration are not app-managed profile fields.
+
+Profile files are parsed as literal data. Dynamic supported values such as `${USER}`, command substitution, backticks, `source`, and functions are not executed. Existing manual files with literal supported fields remain usable but read-only in the GUI.
+
+Read [Profile configuration](docs/CONFIGURATION.md) for the field reference, SSH aliases, parser contract, permissions, and legacy migration behavior.
+
+## Permissions and signing
+
+Region and full-screen capture require macOS Screen Recording permission. The app asks only when an explicit capture needs it:
+
+**System Settings → Privacy & Security → Screen Recording → VPS Image Paste**
+
+Clipboard-only uploads do not require Screen Recording access.
+
+Current source and Homebrew builds are compiled locally and ad-hoc signed. A stable designated requirement keeps the app's Screen Recording identity consistent across rebuilds, but the build is not Apple-notarized. Review [SECURITY.md](SECURITY.md) for the trust model and private vulnerability-reporting channel.
 
 ## Requirements
 
-- macOS 13+ (Apple Silicon or Intel)
-- Swift toolchain (Xcode Command Line Tools): `xcode-select --install`
-- [`pngpaste`](https://github.com/jcsalterego/pngpaste) (installed automatically by `install.sh`)
-- SSH key access to the host
+- macOS 13 or newer, Apple Silicon or Intel.
+- Xcode Command Line Tools for source builds.
+- [`pngpaste`](https://github.com/jcsalterego/pngpaste) to read clipboard images.
+- SSH key access to the destination host.
 
-## Rebuild after editing
+The Homebrew formula installs `pngpaste`. For a source build:
 
 ```sh
-./build.sh && launchctl kickstart -k gui/$(id -u)/com.khaireddine.vpsimgpaste
+xcode-select --install
+brew install pngpaste
 ```
+
+## Development
+
+```sh
+brew install shellcheck
+make check       # lint, isolated integration tests, Swift tests, app build/signature
+make build       # build the app in ~/Applications
+make icon        # regenerate AppIcon.icns from the SVG source
+make screenshot  # regenerate the README screenshot with fixture data
+```
+
+Tests use temporary homes and mocked network, clipboard, screenshot, installer, and LaunchAgent commands. They do not contact a real VPS.
+
+The CLI is the authority for parsing, validation, profile persistence, and remote operations. The AppKit layer invokes it with argument arrays and does not write shell-backed configuration directly. Read [CONTRIBUTING.md](CONTRIBUTING.md) before changing those boundaries.
+
+## Troubleshooting
+
+### The app cannot connect
+
+Run the same alias through OpenSSH, then use the read-only profile test:
+
+```sh
+ssh work-vps true
+vps-img-paste profile test work
+```
+
+Keep ports, users, key paths, and jump hosts in `~/.ssh/config`.
+
+### Upload succeeds but the expected folder is empty
+
+Check that **Remote home** is the SSH account's real absolute home and that **Upload folder** is relative to it. All operations use exactly `VPS_REMOTE_HOME/VPS_REMOTE_DIR`.
+
+### Screenshot capture is unavailable
+
+Confirm Screen Recording permission for **VPS Image Paste**, then quit and reopen the app. Clipboard-image uploads can still work without that permission.
+
+### Two menu-bar icons appear
+
+An older Homebrew service or source LaunchAgent may still be running. Re-run the installation method you want to keep. The source installer removes known obsolete Homebrew launch paths before loading its current app.
+
+## Upgrade and uninstall
+
+Homebrew:
+
+```sh
+brew update
+brew upgrade vps-img-paste
+brew services restart vps-img-paste
+```
+
+Source checkout:
+
+```sh
+git pull --ff-only
+./install.sh
+```
+
+Remove a source installation:
+
+```sh
+./uninstall.sh
+```
+
+Uninstalling preserves profile configuration. Delete it manually only if you no longer need it.
+
+## Community
+
+- [Contributing guide](CONTRIBUTING.md)
+- [Security policy](SECURITY.md)
+- [Code of conduct](CODE_OF_CONDUCT.md)
+- [Changelog](CHANGELOG.md)
+- [MIT License](LICENSE)

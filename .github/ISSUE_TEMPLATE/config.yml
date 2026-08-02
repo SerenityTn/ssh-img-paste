@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability privately
+    url: https://github.com/SerenityTn/vps-img-paste/security/advisories/new
+    about: Do not disclose credentials, private hosts, or exploit details in a public issue.

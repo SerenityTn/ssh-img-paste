@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+case "${1:-}" in
+  profiles)
+    printf '*\tdemo\tDemo VPS\tdemo-vps\n'
+    printf '\tstaging\tStaging\tstaging-vps\n'
+    ;;
+  profile)
+    [ "${2:-}" = inspect ] || exit 64
+    id="${3:-demo}"
+    if [ "$id" = demo ]; then
+      label="Demo VPS"
+      host="demo-vps"
+      active=true
+    else
+      label="Staging"
+      host="staging-vps"
+      active=false
+    fi
+    printf 'id\t%s\n' "$id"
+    printf 'label\t%s\n' "$label"
+    printf 'host\t%s\n' "$host"
+    printf 'remote_home\t/home/demo\n'
+    printf 'remote_dir\timg-uploads\n'
+    printf 'shot_mode\tregion\n'
+    printf 'restore_seconds\t60\n'
+    printf 'kind\tapp\n'
+    printf 'path\t~/.config/vps-img-paste/profiles/%s.env\n' "$id"
+    printf 'editable\ttrue\n'
+    printf 'active\t%s\n' "$active"
+    ;;
+  *) exit 64 ;;
+esac

@@ -1,0 +1,68 @@
+name: Bug report
+description: Report reproducible incorrect behavior
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. Remove hostnames, usernames, IP addresses, local paths, SSH output, and uploaded filenames before posting.
+        Report security problems privately through the link in SECURITY.md.
+  - type: input
+    id: version
+    attributes:
+      label: VPS Image Paste version
+      description: Open "About VPS Image Paste" or provide the Git tag/commit.
+      placeholder: 1.2.0
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: Installation method
+      options:
+        - Homebrew
+        - Source installer
+        - CLI only
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version and Mac architecture
+      placeholder: macOS 15.6, Apple Silicon
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: What happened?
+      description: Describe the observed behavior and the behavior you expected.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Configure a fixture profile...
+        2. Open the menu...
+        3. Select...
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Sanitized diagnostics
+      description: Paste only output you have reviewed and redacted. Never include private keys, passwords, tokens, private hosts, or connection strings.
+      render: shell
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Safety check
+      options:
+        - label: I removed private infrastructure and credential information from this report.
+          required: true
+        - label: This is not a security vulnerability.
+          required: true

@@ -38,6 +38,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             button.target = self
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
             button.toolTip = "VPS Image Paste — click to upload the clipboard image"
+            button.setAccessibilityLabel("VPS Image Paste")
+            button.setAccessibilityHelp("Upload the clipboard image, or open destination options with a secondary click")
         }
     }
 
@@ -171,6 +173,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         menu.addItem(.separator())
+        let project = NSMenuItem(title: "VPS Image Paste on GitHub…", action: #selector(openProjectPage(_:)), keyEquivalent: "")
+        project.target = self
+        menu.addItem(project)
+        let about = NSMenuItem(title: "About VPS Image Paste", action: #selector(showAbout(_:)), keyEquivalent: "")
+        about.target = self
+        menu.addItem(about)
+        menu.addItem(.separator())
         let quit = NSMenuItem(title: "Quit VPS Image Paste", action: #selector(quit), keyEquivalent: "q")
         quit.target = self
         menu.addItem(quit)
@@ -285,6 +294,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func quit() { NSApp.terminate(nil) }
+
+    @objc private func openProjectPage(_ sender: Any?) {
+        guard let url = URL(string: "https://github.com/SerenityTn/vps-img-paste") else { return }
+        NSWorkspace.shared.open(url)
+    }
+
+    @objc private func showAbout(_ sender: Any?) {
+        NSApp.activate(ignoringOtherApps: true)
+        NSApp.orderFrontStandardAboutPanel(sender)
+    }
 
     private func screenCapturePermissionGranted() -> Bool {
         if CGPreflightScreenCaptureAccess() { return true }

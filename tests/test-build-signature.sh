@@ -18,4 +18,15 @@ case "$requirement" in
     ;;
 esac
 
-printf 'PASS: app has stable Screen Recording permission identity\n'
+expected_version="$(tr -d '[:space:]' < "$ROOT/VERSION")"
+actual_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist")"
+[ "$actual_version" = "$expected_version" ] || {
+  printf 'FAIL: expected app version %s, got %s\n' "$expected_version" "$actual_version" >&2
+  exit 1
+}
+[ -s "$APP/Contents/Resources/AppIcon.icns" ] || {
+  printf 'FAIL: app icon is missing from the bundle\n' >&2
+  exit 1
+}
+
+printf 'PASS: app has a stable identity, release version, and icon\n'

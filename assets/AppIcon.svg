@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-label="VPS Image Paste app icon">
+  <defs>
+    <linearGradient id="background" x1="160" y1="120" x2="864" y2="904" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#17243A"/>
+      <stop offset="1" stop-color="#0B1220"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="300" y1="290" x2="720" y2="730" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#55D7FF"/>
+      <stop offset="1" stop-color="#218BFF"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="34" stdDeviation="34" flood-color="#020617" flood-opacity="0.42"/>
+    </filter>
+  </defs>
+  <rect x="52" y="52" width="920" height="920" rx="220" fill="url(#background)"/>
+  <path d="M176 736C286 632 370 714 478 602C588 488 668 520 848 332" fill="none" stroke="#213250" stroke-width="52" stroke-linecap="round" opacity="0.65"/>
+  <g filter="url(#shadow)">
+    <rect x="176" y="224" width="568" height="474" rx="92" fill="#F8FAFC"/>
+    <rect x="224" y="272" width="472" height="378" rx="54" fill="#DCEAF5"/>
+    <circle cx="331" cy="374" r="48" fill="#55D7FF"/>
+    <path d="M242 614L382 464C397 448 423 448 438 465L509 543L570 482C585 467 609 467 624 482L678 538V632H242V614Z" fill="url(#accent)"/>
+    <path d="M624 482L678 538V632H510L570 482C585 467 609 467 624 482Z" fill="#1675DB" opacity="0.82"/>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="570" y="532" width="286" height="246" rx="68" fill="#121D30" stroke="#55D7FF" stroke-width="14"/>
+    <circle cx="642" cy="617" r="16" fill="#55D7FF"/>
+    <rect x="683" y="602" width="105" height="30" rx="15" fill="#E8F5FF"/>
+    <circle cx="642" cy="694" r="16" fill="#218BFF"/>
+    <rect x="683" y="679" width="105" height="30" rx="15" fill="#A9C8E6"/>
+  </g>
+  <g transform="translate(695 276)">
+    <circle cx="0" cy="0" r="120" fill="url(#accent)" stroke="#F8FAFC" stroke-width="18"/>
+    <path d="M0 62V-62M0-62L-45-17M0-62L45-17" fill="none" stroke="#FFFFFF" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>
