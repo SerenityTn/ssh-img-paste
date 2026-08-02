@@ -24,26 +24,19 @@ final class ScriptClient {
     func scriptPath() -> String {
         if let override = executableOverride, !override.isEmpty { return override }
         let home = fileManager.homeDirectoryForCurrentUser.path
-        let sourceInstalls = [
-            "\(home)/bin/ssh-img-paste",
-            "\(home)/bin/vps-img-paste",
-        ]
+        let sourceInstall = "\(home)/bin/ssh-img-paste"
         let homebrewInstalls = [
             "/opt/homebrew/bin/ssh-img-paste",
             "/usr/local/bin/ssh-img-paste",
-            "/opt/homebrew/bin/vps-img-paste",
-            "/usr/local/bin/vps-img-paste",
         ]
         let homeApplications = "\(home)/Applications/"
         let bundledInHome = Bundle.main.bundleURL.standardizedFileURL.path.hasPrefix(homeApplications)
+        let sourceInstalls = [sourceInstall]
         let detectedInstalls = bundledInHome ? sourceInstalls + homebrewInstalls : homebrewInstalls + sourceInstalls
-        let environmentInstalls = [
-            ProcessInfo.processInfo.environment["SSH_IMG_PASTE_BIN"],
-            ProcessInfo.processInfo.environment["VPS_IMG_PASTE_BIN"],
-        ].compactMap { $0 }
+        let environmentInstalls = [ProcessInfo.processInfo.environment["SSH_IMG_PASTE_BIN"]].compactMap { $0 }
         let candidates = environmentInstalls + detectedInstalls
         for candidate in candidates where fileManager.isExecutableFile(atPath: candidate) { return candidate }
-        return sourceInstalls[0]
+        return sourceInstall
     }
 
     func runSync(_ arguments: [String], timeout: TimeInterval = ScriptClient.defaultTimeout) -> ScriptResult {
@@ -139,10 +132,10 @@ final class ScriptClient {
         }
     }
 
-    func listProfiles() -> (profiles: [VPSProfile], ok: Bool, error: String?) {
+    func listProfiles() -> (profiles: [SSHProfile], ok: Bool, error: String?) {
         let result = runSync(["profiles"])
         guard result.succeeded else { return ([], false, result.sanitizedError) }
-        return (VPSProfile.parseList(result.stdout), true, nil)
+        return (SSHProfile.parseList(result.stdout), true, nil)
     }
 
     func inspectProfile(_ id: String) -> (details: ProfileDetails?, result: ScriptResult) {

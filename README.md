@@ -80,7 +80,7 @@ cd ssh-img-paste
 ./install.sh
 ```
 
-The source installer builds `~/Applications/SSHImagePaste.app`, links the CLI at `~/bin/ssh-img-paste`, retains `vps-img-paste` as a compatibility command, and starts a user LaunchAgent. Existing VPS Image Paste 1.x configuration is detected and used without migration.
+The source installer builds `~/Applications/SSHImagePaste.app`, links the CLI at `~/bin/ssh-img-paste`, creates a default named profile for fresh installations, and starts a user LaunchAgent.
 
 ## Menu behavior
 
@@ -127,7 +127,7 @@ The app stores a label, SSH host or alias, absolute remote home, relative upload
 
 Profile files are parsed as literal data. Dynamic supported values such as `${USER}`, command substitution, backticks, `source`, and functions are not executed. Existing manual files with literal supported fields remain usable but read-only in the GUI.
 
-Read [Profile configuration](docs/CONFIGURATION.md) for the field reference, SSH aliases, parser contract, permissions, and legacy migration behavior.
+Read [Profile configuration](docs/CONFIGURATION.md) for the field reference, SSH aliases, parser contract, and permissions.
 
 ## Permissions and signing
 
@@ -182,7 +182,7 @@ Keep ports, users, key paths, and jump hosts in `~/.ssh/config`.
 
 ### Upload succeeds but the expected folder is empty
 
-Check that **Remote home** is the SSH account's real absolute home and that **Upload folder** is relative to it. All operations use exactly `VPS_REMOTE_HOME/VPS_REMOTE_DIR`.
+Check that **Remote home** is the SSH account's real absolute home and that **Upload folder** is relative to it. All operations use exactly `SSH_REMOTE_HOME/SSH_REMOTE_DIR`.
 
 ### Screenshot capture is unavailable
 

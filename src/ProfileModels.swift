@@ -17,7 +17,7 @@ struct ProfileManagerLoadState {
     }
 }
 
-struct VPSProfile: Equatable {
+struct SSHProfile: Equatable {
     let id: String
     let label: String
     let host: String
@@ -25,8 +25,8 @@ struct VPSProfile: Equatable {
 
     var displayName: String { label.isEmpty ? id : label }
 
-    static func parseList(_ output: String) -> [VPSProfile] {
-        var profiles: [VPSProfile] = []
+    static func parseList(_ output: String) -> [SSHProfile] {
+        var profiles: [SSHProfile] = []
         for line in output.split(separator: "\n", omittingEmptySubsequences: true) {
             let parts = line.split(separator: "\t", maxSplits: 3, omittingEmptySubsequences: false)
             guard parts.count == 4 else { continue }
@@ -34,8 +34,8 @@ struct VPSProfile: Equatable {
             let id = String(parts[1]).trimmed
             let label = String(parts[2]).trimmed
             let host = String(parts[3]).trimmed
-            guard VPSProfileDraft.isValidID(id), !label.isEmpty, VPSProfileDraft.isValidHost(host) else { continue }
-            profiles.append(VPSProfile(id: id, label: label, host: host, isActive: marker == "*"))
+            guard SSHProfileDraft.isValidID(id), !label.isEmpty, SSHProfileDraft.isValidHost(host) else { continue }
+            profiles.append(SSHProfile(id: id, label: label, host: host, isActive: marker == "*"))
         }
         return profiles
     }
@@ -43,17 +43,13 @@ struct VPSProfile: Equatable {
 
 enum ProfileKind: String, Equatable {
     case app
-    case legacy
     case manual
-    case env
 
     init(rawInspectValue: String) {
         switch rawInspectValue.trimmed.lowercased() {
         case "app": self = .app
-        case "legacy": self = .legacy
         case "manual": self = .manual
-        case "env": self = .env
-        default: self = .app
+        default: self = .manual
         }
     }
 }
@@ -73,7 +69,6 @@ struct ProfileDetails: Equatable {
 
     var badges: [String] {
         var result: [String] = []
-        if kind == .legacy || kind == .env { result.append("Legacy") }
         if kind == .manual || !editable { result.append("Manual") }
         return result
     }
@@ -85,10 +80,10 @@ struct ProfileDetails: Equatable {
             guard parts.count == 2 else { continue }
             fields[String(parts[0]).trimmed] = String(parts[1]).trimmed
         }
-        guard let id = fields["id"], VPSProfileDraft.isValidID(id),
+        guard let id = fields["id"], SSHProfileDraft.isValidID(id),
               let label = fields["label"], !label.isEmpty,
-              let host = fields["host"], VPSProfileDraft.isValidHost(host) else { return nil }
-        let shotMode = fields["shot_mode"].flatMap { VPSProfileDraft.validShotModes.contains($0) ? $0 : nil } ?? "region"
+              let host = fields["host"], SSHProfileDraft.isValidHost(host) else { return nil }
+        let shotMode = fields["shot_mode"].flatMap { SSHProfileDraft.validShotModes.contains($0) ? $0 : nil } ?? "region"
         let seconds = Int(fields["restore_seconds"] ?? "") ?? 60
         return ProfileDetails(
             id: id,
@@ -111,7 +106,7 @@ struct ProfileDetails: Equatable {
     }
 }
 
-struct VPSProfileDraft: Equatable {
+struct SSHProfileDraft: Equatable {
     static let validShotModes = ["region", "full"]
 
     var originalID: String?
@@ -142,8 +137,8 @@ struct VPSProfileDraft: Equatable {
         self.init(originalID: details.id, id: details.id, label: details.label, host: details.host, remoteHome: details.remoteHome, remoteDir: details.remoteDir, shotMode: details.shotMode, restoreSeconds: details.restoreSeconds, editable: details.editable)
     }
 
-    static func empty() -> VPSProfileDraft {
-        VPSProfileDraft(id: "", label: "", host: "", remoteHome: "", remoteDir: "img-uploads", shotMode: "region", restoreSeconds: 60)
+    static func empty() -> SSHProfileDraft {
+        SSHProfileDraft(id: "", label: "", host: "", remoteHome: "", remoteDir: "img-uploads", shotMode: "region", restoreSeconds: 60)
     }
 
     var validationErrors: [String] {
@@ -162,7 +157,7 @@ struct VPSProfileDraft: Equatable {
 
     var isValid: Bool { validationErrors.isEmpty }
 
-    func changed(from original: VPSProfileDraft?) -> Bool {
+    func changed(from original: SSHProfileDraft?) -> Bool {
         guard let original = original else { return true }
         return self != original
     }

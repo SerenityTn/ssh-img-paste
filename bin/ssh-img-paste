@@ -4,7 +4,7 @@
 #
 # Subcommands:
 #   (none) | upload   Upload the clipboard image; if the clipboard has no image,
-#                     capture per VPS_SHOT_MODE (default: region selection).
+#                     capture per SSH_SHOT_MODE (default: region selection).
 #   region            Drag to select a screen region, then upload it.
 #   full              Capture the full main display, then upload it.
 #   list              Print "SIZE<TAB>NAME" for each uploaded image, newest first.
@@ -20,33 +20,14 @@
 #   profile delete NAME [--switch-to OTHER]
 #   profile test NAME
 #
-# Existing VPS Image Paste 1.x configuration remains supported in
-# ~/.config/vps-img-paste.env and ~/.config/vps-img-paste/profiles/NAME.env.
-# VPS_* field names are retained as the stable profile schema.
+# Profiles live in ~/.config/ssh-img-paste/profiles/NAME.env and use SSH_* keys.
 set -euo pipefail
 
 # --- config ------------------------------------------------------------------
 CONFIG_BASE="${XDG_CONFIG_HOME:-$HOME/.config}"
-if [ -n "${SSH_IMG_PASTE_CONFIG_DIR:-}" ]; then
-  CONFIG_ROOT="$SSH_IMG_PASTE_CONFIG_DIR"
-elif [ -n "${VPS_IMG_PASTE_CONFIG_DIR:-}" ]; then
-  CONFIG_ROOT="$VPS_IMG_PASTE_CONFIG_DIR"
-elif [ -e "$CONFIG_BASE/ssh-img-paste" ] || [ ! -e "$CONFIG_BASE/vps-img-paste" ]; then
-  CONFIG_ROOT="$CONFIG_BASE/ssh-img-paste"
-else
-  CONFIG_ROOT="$CONFIG_BASE/vps-img-paste"
-fi
+CONFIG_ROOT="${SSH_IMG_PASTE_CONFIG_DIR:-$CONFIG_BASE/ssh-img-paste}"
 PROFILES_DIR="$CONFIG_ROOT/profiles"
 ACTIVE_FILE="$CONFIG_ROOT/active-profile"
-if [ -n "${SSH_IMG_PASTE_CONFIG:-}" ]; then
-  LEGACY_CONF="$SSH_IMG_PASTE_CONFIG"
-elif [ -n "${VPS_IMG_PASTE_CONFIG:-}" ]; then
-  LEGACY_CONF="$VPS_IMG_PASTE_CONFIG"
-elif [ -e "$CONFIG_BASE/ssh-img-paste.env" ] || [ ! -e "$CONFIG_BASE/vps-img-paste.env" ]; then
-  LEGACY_CONF="$CONFIG_BASE/ssh-img-paste.env"
-else
-  LEGACY_CONF="$CONFIG_BASE/vps-img-paste.env"
-fi
 REQUESTED_PROFILE=""
 PROFILE_LABEL=""
 PROFILE_KIND=""
@@ -54,7 +35,7 @@ PROFILE_PATH=""
 PROFILE_EDITABLE="false"
 PROFILE_PARSE_ERROR=""
 PROFILE_ID=""
-VPS=""
+SSH=""
 REMOTE_HOME=""
 REMOTE_DIR=""
 
@@ -222,37 +203,27 @@ validate_label() {
 
 validate_loaded_profile() {
   validate_label "$PROFILE_LABEL" || return $?
-  validate_host "$VPS" || return $?
+  validate_host "$SSH" || return $?
   validate_abs_path remote_home "$REMOTE_HOME" || return $?
   validate_remote_dir "$REMOTE_DIR" || return $?
-  if [ -n "${VPS_SHOT_MODE:-}" ]; then validate_shot_mode "$VPS_SHOT_MODE" || return $?; fi
-  if [ -n "${VPS_CLIP_RESTORE_SECONDS:-}" ]; then validate_restore_seconds "$VPS_CLIP_RESTORE_SECONDS" || return $?; fi
+  if [ -n "${SSH_SHOT_MODE:-}" ]; then validate_shot_mode "$SSH_SHOT_MODE" || return $?; fi
+  if [ -n "${SSH_CLIP_RESTORE_SECONDS:-}" ]; then validate_restore_seconds "$SSH_CLIP_RESTORE_SECONDS" || return $?; fi
   return 0
 }
 
 profile_config_path() {
   local id="$1"
-  if [ "$id" = default ] && [ -f "$LEGACY_CONF" ]; then
-    printf '%s\n' "$LEGACY_CONF"
-  else
-    printf '%s/%s.env\n' "$PROFILES_DIR" "$id"
-  fi
+  printf '%s/%s.env\n' "$PROFILES_DIR" "$id"
 }
 
 profile_exists() {
   local id="$1"
-  if [ "$id" = default ] && { [ -f "$LEGACY_CONF" ] || [ -n "${VPS_HOST:-}" ]; }; then
-    return 0
-  fi
   [ -f "$PROFILES_DIR/$id.env" ]
 }
 
 enumerate_profile_ids() {
   local path id
   {
-    if [ -f "$LEGACY_CONF" ] || { [ ! -f "$LEGACY_CONF" ] && [ -n "${VPS_HOST:-}" ]; }; then
-      printf 'default\n'
-    fi
     if [ -d "$PROFILES_DIR" ]; then
       for path in "$PROFILES_DIR"/*.env; do
         [ -f "$path" ] || continue
@@ -268,10 +239,8 @@ read_active_profile() {
   local id=""
   if [ -f "$ACTIVE_FILE" ]; then
     IFS= read -r id < "$ACTIVE_FILE" || true
-  elif [ -f "$LEGACY_CONF" ] || [ -n "${VPS_HOST:-}" ]; then
-    id="default"
   else
-    id="$(enumerate_profile_ids | sed -n '1p')"
+    id="$(enumerate_profile_ids | /usr/bin/sed -n '1p')"
   fi
   printf '%s\n' "$id"
 }
@@ -324,7 +293,7 @@ valid_assignment_key() {
 }
 
 reset_profile_vars() {
-  unset VPS_PROFILE_LABEL VPS_HOST VPS_REMOTE_HOME VPS_REMOTE_DIR VPS_SHOT_MODE VPS_CLIP_RESTORE_SECONDS
+  unset SSH_PROFILE_LABEL SSH_HOST SSH_REMOTE_HOME SSH_REMOTE_DIR SSH_SHOT_MODE SSH_CLIP_RESTORE_SECONDS
   PROFILE_LABEL=""
   PROFILE_KIND=""
   PROFILE_PATH=""
@@ -334,18 +303,18 @@ reset_profile_vars() {
 assign_profile_var() {
   local key="$1" value="$2"
   case "$key" in
-    VPS_PROFILE_LABEL) VPS_PROFILE_LABEL="$value" ;;
-    VPS_HOST) VPS_HOST="$value" ;;
-    VPS_REMOTE_HOME) VPS_REMOTE_HOME="$value" ;;
-    VPS_REMOTE_DIR) VPS_REMOTE_DIR="$value" ;;
-    VPS_SHOT_MODE) VPS_SHOT_MODE="$value" ;;
-    VPS_CLIP_RESTORE_SECONDS) VPS_CLIP_RESTORE_SECONDS="$value" ;;
+    SSH_PROFILE_LABEL) SSH_PROFILE_LABEL="$value" ;;
+    SSH_HOST) SSH_HOST="$value" ;;
+    SSH_REMOTE_HOME) SSH_REMOTE_HOME="$value" ;;
+    SSH_REMOTE_DIR) SSH_REMOTE_DIR="$value" ;;
+    SSH_SHOT_MODE) SSH_SHOT_MODE="$value" ;;
+    SSH_CLIP_RESTORE_SECONDS) SSH_CLIP_RESTORE_SECONDS="$value" ;;
   esac
 }
 
 supported_profile_key() {
   case "$1" in
-    VPS_PROFILE_LABEL|VPS_HOST|VPS_REMOTE_HOME|VPS_REMOTE_DIR|VPS_SHOT_MODE|VPS_CLIP_RESTORE_SECONDS) return 0 ;;
+    SSH_PROFILE_LABEL|SSH_HOST|SSH_REMOTE_HOME|SSH_REMOTE_DIR|SSH_SHOT_MODE|SSH_CLIP_RESTORE_SECONDS) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -380,17 +349,10 @@ parse_profile_file() {
 }
 
 load_profile() {
-  local id="$1" conf old_label old_host old_home old_dir old_mode old_secs
-  old_label="${VPS_PROFILE_LABEL:-}"
-  old_host="${VPS_HOST:-}"
-  old_home="${VPS_REMOTE_HOME:-}"
-  old_dir="${VPS_REMOTE_DIR:-}"
-  old_mode="${VPS_SHOT_MODE:-}"
-  old_secs="${VPS_CLIP_RESTORE_SECONDS:-}"
-
+  local id="$1" conf
   if [ -z "$id" ]; then
-    echo "✗ Not configured. Copy ssh-img-paste.env.example to $LEGACY_CONF and set VPS_HOST, or create $PROFILES_DIR/NAME.env." >&2
-    notify "Not configured" "Set VPS_HOST in an SSH Image Paste profile"
+    echo "✗ Not configured. Create a profile in $PROFILES_DIR or use Manage Profiles." >&2
+    notify "Not configured" "Create an SSH Image Paste profile"
     return 2
   fi
   valid_profile_id "$id" || {
@@ -413,36 +375,24 @@ load_profile() {
       echo "✗ Unsupported profile assignment in $conf: $PROFILE_PARSE_ERROR uses shell syntax. Only literal assignments are supported; rewrite it as a quoted literal or manage this profile manually outside the CLI/GUI." >&2
       return 64
     fi
-    if [ "$id" = default ] && [ "$conf" = "$LEGACY_CONF" ]; then
-      PROFILE_KIND="legacy"
-    elif [ "$PROFILE_EDITABLE" = true ]; then
+    if [ "$PROFILE_EDITABLE" = true ]; then
       PROFILE_KIND="app"
     else
       PROFILE_KIND="manual"
     fi
-  elif [ "$id" = default ] && [ -n "$old_host" ]; then
-    VPS_PROFILE_LABEL="$old_label"
-    VPS_HOST="$old_host"
-    VPS_REMOTE_HOME="$old_home"
-    VPS_REMOTE_DIR="$old_dir"
-    VPS_SHOT_MODE="$old_mode"
-    VPS_CLIP_RESTORE_SECONDS="$old_secs"
-    PROFILE_PATH="env"
-    PROFILE_KIND="env"
-    PROFILE_EDITABLE="false"
   else
     echo "✗ SSH profile not found: $id ($conf)" >&2
     return 2
   fi
 
-  PROFILE_LABEL="${VPS_PROFILE_LABEL:-$id}"
-  VPS="${VPS_HOST:-user@your-ssh-host}"
-  REMOTE_HOME="${VPS_REMOTE_HOME:-/home/user}"
-  REMOTE_DIR="${VPS_REMOTE_DIR:-img-uploads}"
+  PROFILE_LABEL="${SSH_PROFILE_LABEL:-$id}"
+  SSH="${SSH_HOST:-user@your-ssh-host}"
+  REMOTE_HOME="${SSH_REMOTE_HOME:-/home/user}"
+  REMOTE_DIR="${SSH_REMOTE_DIR:-img-uploads}"
 
-  if [ "$VPS" = "user@your-ssh-host" ]; then
-    echo "✗ Not configured. Set VPS_HOST in $(profile_config_path "$id")." >&2
-    notify "Not configured" "Set VPS_HOST for profile $id"
+  if [ "$SSH" = "user@your-ssh-host" ]; then
+    echo "✗ Not configured. Set SSH_HOST in $(profile_config_path "$id")." >&2
+    notify "Not configured" "Set SSH_HOST for profile $id"
     return 2
   fi
   validate_loaded_profile || return $?
@@ -452,7 +402,7 @@ print_profile_row() (
   local id="$1" active="$2" marker=""
   load_profile "$id" || exit $?
   [ "$id" = "$active" ] && marker="*"
-  printf '%s\t%s\t%s\t%s\n' "$marker" "$id" "$PROFILE_LABEL" "$VPS"
+  printf '%s\t%s\t%s\t%s\n' "$marker" "$id" "$PROFILE_LABEL" "$SSH"
 )
 
 validate_selected_profile() (
@@ -589,13 +539,13 @@ shell_quote() {
 write_profile_content_new() {
   local file="$1" label="$2" host="$3" home="$4" dir="$5" mode="$6" secs="$7"
   {
-    printf '# ssh-img-paste profile v1 (VPS_* keys remain compatible with 1.x)\n'
-    printf 'VPS_PROFILE_LABEL=%s\n' "$(shell_quote "$label")"
-    printf 'VPS_HOST=%s\n' "$(shell_quote "$host")"
-    printf 'VPS_REMOTE_HOME=%s\n' "$(shell_quote "$home")"
-    printf 'VPS_REMOTE_DIR=%s\n' "$(shell_quote "$dir")"
-    [ -z "$mode" ] || printf 'VPS_SHOT_MODE=%s\n' "$(shell_quote "$mode")"
-    [ -z "$secs" ] || printf 'VPS_CLIP_RESTORE_SECONDS=%s\n' "$(shell_quote "$secs")"
+    printf '# ssh-img-paste profile v2\n'
+    printf 'SSH_PROFILE_LABEL=%s\n' "$(shell_quote "$label")"
+    printf 'SSH_HOST=%s\n' "$(shell_quote "$host")"
+    printf 'SSH_REMOTE_HOME=%s\n' "$(shell_quote "$home")"
+    printf 'SSH_REMOTE_DIR=%s\n' "$(shell_quote "$dir")"
+    [ -z "$mode" ] || printf 'SSH_SHOT_MODE=%s\n' "$(shell_quote "$mode")"
+    [ -z "$secs" ] || printf 'SSH_CLIP_RESTORE_SECONDS=%s\n' "$(shell_quote "$secs")"
   } > "$file"
 }
 
@@ -650,27 +600,27 @@ replace_or_append_profile_file() {
   while IFS= read -r line || [ -n "$line" ]; do
     case "$line" in *=*) key="${line%%=*}" ;; *) key="" ;; esac
     case "$key" in
-      VPS_PROFILE_LABEL)
-        if [ "$FIELD_LABEL_SET" -eq 1 ]; then printf 'VPS_PROFILE_LABEL=%s\n' "$(shell_quote "$FIELD_LABEL")"; replaced_label=1; else printf '%s\n' "$line"; fi ;;
-      VPS_HOST)
-        if [ "$FIELD_HOST_SET" -eq 1 ]; then printf 'VPS_HOST=%s\n' "$(shell_quote "$FIELD_HOST")"; replaced_host=1; else printf '%s\n' "$line"; fi ;;
-      VPS_REMOTE_HOME)
-        if [ "$FIELD_HOME_SET" -eq 1 ]; then printf 'VPS_REMOTE_HOME=%s\n' "$(shell_quote "$FIELD_HOME")"; replaced_home=1; else printf '%s\n' "$line"; fi ;;
-      VPS_REMOTE_DIR)
-        if [ "$FIELD_DIR_SET" -eq 1 ]; then printf 'VPS_REMOTE_DIR=%s\n' "$(shell_quote "$FIELD_DIR")"; replaced_dir=1; else printf '%s\n' "$line"; fi ;;
-      VPS_SHOT_MODE)
-        if [ "$FIELD_MODE_SET" -eq 1 ]; then printf 'VPS_SHOT_MODE=%s\n' "$(shell_quote "$FIELD_MODE")"; replaced_mode=1; else printf '%s\n' "$line"; fi ;;
-      VPS_CLIP_RESTORE_SECONDS)
-        if [ "$FIELD_SECS_SET" -eq 1 ]; then printf 'VPS_CLIP_RESTORE_SECONDS=%s\n' "$(shell_quote "$FIELD_SECS")"; replaced_secs=1; else printf '%s\n' "$line"; fi ;;
+      SSH_PROFILE_LABEL)
+        if [ "$FIELD_LABEL_SET" -eq 1 ]; then printf 'SSH_PROFILE_LABEL=%s\n' "$(shell_quote "$FIELD_LABEL")"; replaced_label=1; else printf '%s\n' "$line"; fi ;;
+      SSH_HOST)
+        if [ "$FIELD_HOST_SET" -eq 1 ]; then printf 'SSH_HOST=%s\n' "$(shell_quote "$FIELD_HOST")"; replaced_host=1; else printf '%s\n' "$line"; fi ;;
+      SSH_REMOTE_HOME)
+        if [ "$FIELD_HOME_SET" -eq 1 ]; then printf 'SSH_REMOTE_HOME=%s\n' "$(shell_quote "$FIELD_HOME")"; replaced_home=1; else printf '%s\n' "$line"; fi ;;
+      SSH_REMOTE_DIR)
+        if [ "$FIELD_DIR_SET" -eq 1 ]; then printf 'SSH_REMOTE_DIR=%s\n' "$(shell_quote "$FIELD_DIR")"; replaced_dir=1; else printf '%s\n' "$line"; fi ;;
+      SSH_SHOT_MODE)
+        if [ "$FIELD_MODE_SET" -eq 1 ]; then printf 'SSH_SHOT_MODE=%s\n' "$(shell_quote "$FIELD_MODE")"; replaced_mode=1; else printf '%s\n' "$line"; fi ;;
+      SSH_CLIP_RESTORE_SECONDS)
+        if [ "$FIELD_SECS_SET" -eq 1 ]; then printf 'SSH_CLIP_RESTORE_SECONDS=%s\n' "$(shell_quote "$FIELD_SECS")"; replaced_secs=1; else printf '%s\n' "$line"; fi ;;
       *) printf '%s\n' "$line" ;;
     esac
   done < "$path" > "$out"
-  if [ "$FIELD_LABEL_SET" -eq 1 ] && [ "$replaced_label" -eq 0 ]; then printf 'VPS_PROFILE_LABEL=%s\n' "$(shell_quote "$FIELD_LABEL")" >> "$out"; fi
-  if [ "$FIELD_HOST_SET" -eq 1 ] && [ "$replaced_host" -eq 0 ]; then printf 'VPS_HOST=%s\n' "$(shell_quote "$FIELD_HOST")" >> "$out"; fi
-  if [ "$FIELD_HOME_SET" -eq 1 ] && [ "$replaced_home" -eq 0 ]; then printf 'VPS_REMOTE_HOME=%s\n' "$(shell_quote "$FIELD_HOME")" >> "$out"; fi
-  if [ "$FIELD_DIR_SET" -eq 1 ] && [ "$replaced_dir" -eq 0 ]; then printf 'VPS_REMOTE_DIR=%s\n' "$(shell_quote "$FIELD_DIR")" >> "$out"; fi
-  if [ "$FIELD_MODE_SET" -eq 1 ] && [ "$replaced_mode" -eq 0 ]; then printf 'VPS_SHOT_MODE=%s\n' "$(shell_quote "$FIELD_MODE")" >> "$out"; fi
-  if [ "$FIELD_SECS_SET" -eq 1 ] && [ "$replaced_secs" -eq 0 ]; then printf 'VPS_CLIP_RESTORE_SECONDS=%s\n' "$(shell_quote "$FIELD_SECS")" >> "$out"; fi
+  if [ "$FIELD_LABEL_SET" -eq 1 ] && [ "$replaced_label" -eq 0 ]; then printf 'SSH_PROFILE_LABEL=%s\n' "$(shell_quote "$FIELD_LABEL")" >> "$out"; fi
+  if [ "$FIELD_HOST_SET" -eq 1 ] && [ "$replaced_host" -eq 0 ]; then printf 'SSH_HOST=%s\n' "$(shell_quote "$FIELD_HOST")" >> "$out"; fi
+  if [ "$FIELD_HOME_SET" -eq 1 ] && [ "$replaced_home" -eq 0 ]; then printf 'SSH_REMOTE_HOME=%s\n' "$(shell_quote "$FIELD_HOME")" >> "$out"; fi
+  if [ "$FIELD_DIR_SET" -eq 1 ] && [ "$replaced_dir" -eq 0 ]; then printf 'SSH_REMOTE_DIR=%s\n' "$(shell_quote "$FIELD_DIR")" >> "$out"; fi
+  if [ "$FIELD_MODE_SET" -eq 1 ] && [ "$replaced_mode" -eq 0 ]; then printf 'SSH_SHOT_MODE=%s\n' "$(shell_quote "$FIELD_MODE")" >> "$out"; fi
+  if [ "$FIELD_SECS_SET" -eq 1 ] && [ "$replaced_secs" -eq 0 ]; then printf 'SSH_CLIP_RESTORE_SECONDS=%s\n' "$(shell_quote "$FIELD_SECS")" >> "$out"; fi
   value="$value" # quiet old shellcheck variants about all-local branch parsing
 }
 
@@ -693,11 +643,11 @@ cmd_profile_inspect() {
   load_profile "$id" || exit $?
   printf 'id\t%s\n' "$id"
   printf 'label\t%s\n' "$PROFILE_LABEL"
-  printf 'host\t%s\n' "$VPS"
+  printf 'host\t%s\n' "$SSH"
   printf 'remote_home\t%s\n' "$REMOTE_HOME"
   printf 'remote_dir\t%s\n' "$REMOTE_DIR"
-  printf 'shot_mode\t%s\n' "${VPS_SHOT_MODE:-region}"
-  printf 'restore_seconds\t%s\n' "${VPS_CLIP_RESTORE_SECONDS:-60}"
+  printf 'shot_mode\t%s\n' "${SSH_SHOT_MODE:-region}"
+  printf 'restore_seconds\t%s\n' "${SSH_CLIP_RESTORE_SECONDS:-60}"
   printf 'kind\t%s\n' "$PROFILE_KIND"
   printf 'path\t%s\n' "$PROFILE_PATH"
   printf 'editable\t%s\n' "$PROFILE_EDITABLE"
@@ -804,7 +754,7 @@ _mutate_use() {
   load_profile "$id" || return $?
   atomic_write_string "$ACTIVE_FILE" "$id
 " || return 73
-  printf '✓ Active SSH destination: %s (%s)\n' "$PROFILE_LABEL" "$VPS"
+  printf '✓ Active SSH destination: %s (%s)\n' "$PROFILE_LABEL" "$SSH"
 }
 
 cmd_profile_use() {
@@ -863,11 +813,11 @@ cmd_profile_test() {
   local id="$1"
   validate_id_or_die "$id"
   load_profile "$id" || exit $?
-  if ssh -o BatchMode=yes -o ConnectTimeout=6 "$VPS" /usr/bin/true; then
-    printf '✓ Connection OK: %s (%s)\n' "$PROFILE_LABEL" "$VPS"
+  if ssh -o BatchMode=yes -o ConnectTimeout=6 "$SSH" /usr/bin/true; then
+    printf '✓ Connection OK: %s (%s)\n' "$PROFILE_LABEL" "$SSH"
     return 0
   fi
-  echo "✗ Connection test failed: $PROFILE_LABEL ($VPS)" >&2
+  echo "✗ Connection test failed: $PROFILE_LABEL ($SSH)" >&2
   return 75
 }
 
@@ -932,7 +882,7 @@ acquire_image() {
       return 1 ;;
     auto)
       if "$PNGPASTE" "$out" 2>/dev/null; then echo clip; return 0; fi
-      acquire_image "$out" "${VPS_SHOT_MODE:-region}"; return $? ;;
+      acquire_image "$out" "${SSH_SHOT_MODE:-region}"; return $? ;;
   esac
 }
 
@@ -940,7 +890,7 @@ acquire_image() {
 do_upload() {
   local mode="$1"
   local remote_root="$REMOTE_HOME/$REMOTE_DIR"
-  local tmp; tmp="$(mktemp -t sshimgpaste).png"
+  local tmp; tmp="$(mktemp -t ssh-image-paste).png"
   trap 'rm -f "$tmp"' RETURN
 
   if { [ "$mode" = auto ] || [ "$mode" = clipboard ]; } && [ ! -x "$PNGPASTE" ]; then
@@ -962,18 +912,18 @@ do_upload() {
   fi
 
   local name="$kind-$(date +%Y%m%d-%H%M%S).png"
-  if ! scp -q "${SSH_OPTS[@]}" "$tmp" "$VPS:$remote_root/$name"; then
-    ssh "${SSH_OPTS[@]}" "$VPS" "mkdir -p '$remote_root'" 2>/dev/null || true
-    if ! scp -q "${SSH_OPTS[@]}" "$tmp" "$VPS:$remote_root/$name"; then
-      notify "Upload failed" "Could not reach $PROFILE_LABEL ($VPS)."
-      echo "✗ scp to $PROFILE_LABEL ($VPS) failed." >&2
+  if ! scp -q "${SSH_OPTS[@]}" "$tmp" "$SSH:$remote_root/$name"; then
+    ssh "${SSH_OPTS[@]}" "$SSH" "mkdir -p '$remote_root'" 2>/dev/null || true
+    if ! scp -q "${SSH_OPTS[@]}" "$tmp" "$SSH:$remote_root/$name"; then
+      notify "Upload failed" "Could not reach $PROFILE_LABEL ($SSH)."
+      echo "✗ scp to $PROFILE_LABEL ($SSH) failed." >&2
       return 4
     fi
   fi
 
   local remote_path="$remote_root/$name"
-  local grace="${VPS_CLIP_RESTORE_SECONDS:-60}"
-  local snapdir; snapdir="$(mktemp -d -t vpsclip)"
+  local grace="${SSH_CLIP_RESTORE_SECONDS:-60}"
+  local snapdir; snapdir="$(mktemp -d -t sshclip)"
   local snaptype; snaptype="$(snapshot_clipboard "$snapdir")"
   printf '%s' "$remote_path" | pbcopy
   if [ "$grace" -gt 0 ] 2>/dev/null; then
@@ -1052,7 +1002,7 @@ case "${1:-upload}" in
   list)
     load_profile "$SELECTED_PROFILE"
     remote_root="$REMOTE_HOME/$REMOTE_DIR"
-    ssh "${SSH_OPTS[@]}" "$VPS" \
+    ssh "${SSH_OPTS[@]}" "$SSH" \
       "mkdir -p '$remote_root' && find '$remote_root' -maxdepth 1 -type f -name '*.png' -printf '%T@\t%s\t%f\n' | sort -rn | cut -f2-"
     ;;
   fetch)
@@ -1061,16 +1011,16 @@ case "${1:-upload}" in
     validate_fetch_name "$name" || exit $?
     load_profile "$SELECTED_PROFILE"
     remote_root="$REMOTE_HOME/$REMOTE_DIR"
-    dest="$(mktemp -d -t sshimgpaste)/$name"
-    scp -q "${SSH_OPTS[@]}" "$VPS:$remote_root/$name" "$dest"
+    dest="$(mktemp -d -t ssh-image-paste)/$name"
+    scp -q "${SSH_OPTS[@]}" "$SSH:$remote_root/$name" "$dest"
     echo "$dest"
     ;;
   clean)
     load_profile "$SELECTED_PROFILE"
     remote_root="$REMOTE_HOME/$REMOTE_DIR"
-    n="$(ssh "${SSH_OPTS[@]}" "$VPS" \
+    n="$(ssh "${SSH_OPTS[@]}" "$SSH" \
       "find '$remote_root' -maxdepth 1 -type f -name '*.png' -printf '.' -delete 2>/dev/null | wc -c" | tr -d ' ')"
-    echo "✓ Deleted ${n:-0} uploaded image(s) on $PROFILE_LABEL ($VPS)."
+    echo "✓ Deleted ${n:-0} uploaded image(s) on $PROFILE_LABEL ($SSH)."
     notify "Uploads cleaned — $PROFILE_LABEL" "Deleted ${n:-0} image(s) on the SSH host."
     ;;
   *)

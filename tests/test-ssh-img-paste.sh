@@ -37,8 +37,7 @@ assert_file_eq() {
   [ "$got" = "$2" ] || fail "expected $1 content [$got] to equal [$2]"
 }
 reset_state() {
-  rm -rf "$HOME/.config/ssh-img-paste" "$HOME/.config/ssh-img-paste.env" \
-    "$HOME/.config/vps-img-paste" "$HOME/.config/vps-img-paste.env" \
+  rm -rf "$HOME/.config/ssh-img-paste" \
     "$TEST_LOG" "$PBCOPY_LOG" "$OSASCRIPT_LOG" "$OSASCRIPT_SOURCE_LOG" "$OSASCRIPT_MARKER"
   mkdir -p "$HOME/.config"
   : > "$TEST_LOG"
@@ -46,30 +45,21 @@ reset_state() {
   : > "$OSASCRIPT_LOG"
   : > "$OSASCRIPT_SOURCE_LOG"
 }
-write_legacy() {
-  cat > "$XDG_CONFIG_HOME/vps-img-paste.env" <<'EOF'
-VPS_PROFILE_LABEL="Legacy"
-VPS_HOST="legacy-host"
-VPS_REMOTE_HOME="/srv/legacy"
-VPS_REMOTE_DIR="legacy-images"
-VPS_CLIP_RESTORE_SECONDS=0
-EOF
-}
 write_profiles() {
-  mkdir -p "$XDG_CONFIG_HOME/vps-img-paste/profiles"
-  cat > "$XDG_CONFIG_HOME/vps-img-paste/profiles/dev.env" <<'EOF'
-VPS_PROFILE_LABEL="Development"
-VPS_HOST="dev-host"
-VPS_REMOTE_HOME="/srv/dev"
-VPS_REMOTE_DIR="dev-images"
-VPS_CLIP_RESTORE_SECONDS=0
+  mkdir -p "$XDG_CONFIG_HOME/ssh-img-paste/profiles"
+  cat > "$XDG_CONFIG_HOME/ssh-img-paste/profiles/dev.env" <<'EOF'
+SSH_PROFILE_LABEL="Development"
+SSH_HOST="dev-host"
+SSH_REMOTE_HOME="/srv/dev"
+SSH_REMOTE_DIR="dev-images"
+SSH_CLIP_RESTORE_SECONDS=0
 EOF
-  cat > "$XDG_CONFIG_HOME/vps-img-paste/profiles/prod.env" <<'EOF'
-VPS_PROFILE_LABEL="Production"
-VPS_HOST="prod-host"
-VPS_REMOTE_HOME="/srv/prod"
-VPS_REMOTE_DIR="prod-images"
-VPS_CLIP_RESTORE_SECONDS=0
+  cat > "$XDG_CONFIG_HOME/ssh-img-paste/profiles/prod.env" <<'EOF'
+SSH_PROFILE_LABEL="Production"
+SSH_HOST="prod-host"
+SSH_REMOTE_HOME="/srv/prod"
+SSH_REMOTE_DIR="prod-images"
+SSH_CLIP_RESTORE_SECONDS=0
 EOF
 }
 
@@ -80,7 +70,7 @@ for arg in "$@"; do printf '\t%s' "$arg" >> "$TEST_LOG"; done
 printf '\n' >> "$TEST_LOG"
 cmd="${*: -1}"
 case "$cmd" in
-  *"find"*"sort"*) printf '123\tlegacy.png\n' ;;
+  *"find"*"sort"*) printf '123\tuploaded.png\n' ;;
   *"-delete"*) printf '2\n' ;;
 esac
 EOF
@@ -179,28 +169,14 @@ run_fail() {
   printf '%s' "$out"
 }
 
-# Legacy behavior remains the default profile and targets the legacy host.
-reset_state
-write_legacy
-output="$(run_ok list)"
-assert_contains "$output" $'123\tlegacy.png'
-assert_contains "$(cat "$TEST_LOG")" "legacy-host"
-assert_contains "$(cat "$TEST_LOG")" "legacy-images"
-assert_eq "$(run_ok profile current)" "default"
-pass "legacy default profile"
-
-# The 1.x command remains an exact compatibility entry point.
-assert_eq "$("$ROOT/bin/vps-img-paste" profile current)" "default"
-pass "legacy command compatibility"
-
-# Fresh SSH Image Paste configuration uses the canonical path.
+# SSH Image Paste configuration uses the canonical profile path.
 reset_state
 mkdir -p "$XDG_CONFIG_HOME/ssh-img-paste/profiles"
 cat > "$XDG_CONFIG_HOME/ssh-img-paste/profiles/main.env" <<'EOF'
-VPS_PROFILE_LABEL="Canonical"
-VPS_HOST="canonical-host"
-VPS_REMOTE_HOME="/srv/canonical"
-VPS_REMOTE_DIR="images"
+SSH_PROFILE_LABEL="Canonical"
+SSH_HOST="canonical-host"
+SSH_REMOTE_HOME="/srv/canonical"
+SSH_REMOTE_DIR="images"
 EOF
 printf 'main\n' > "$XDG_CONFIG_HOME/ssh-img-paste/active-profile"
 assert_eq "$(run_ok profile current)" "main"
@@ -208,32 +184,12 @@ output="$(run_ok profiles)"
 assert_contains "$output" $'*\tmain\tCanonical\tcanonical-host'
 pass "canonical SSH Image Paste config path"
 
-# Env-only legacy compatibility works without a config file and stays isolated.
-unset VPS_PROFILE_LABEL VPS_HOST VPS_REMOTE_HOME VPS_REMOTE_DIR VPS_CLIP_RESTORE_SECONDS
-(
-  reset_state
-  export VPS_PROFILE_LABEL="Env Legacy"
-  export VPS_HOST="env-host"
-  export VPS_REMOTE_HOME="/srv/env"
-  export VPS_REMOTE_DIR="env-images"
-  export VPS_CLIP_RESTORE_SECONDS=0
-  output="$(run_ok list)"
-  assert_contains "$output" $'123\tlegacy.png'
-  assert_contains "$(cat "$TEST_LOG")" "env-host"
-  assert_contains "$(cat "$TEST_LOG")" "env-images"
-  assert_eq "$(run_ok profile current)" "default"
-  output="$(run_ok profiles)"
-  assert_contains "$output" $'*\tdefault\tEnv Legacy\tenv-host'
-)
-assert_eq "${VPS_HOST:-}" ""
-pass "env-only legacy default profile"
-
 # Active named profile controls SSH-backed operations.
 reset_state
 write_profiles
-printf 'prod\n' > "$XDG_CONFIG_HOME/vps-img-paste/active-profile"
+printf 'prod\n' > "$XDG_CONFIG_HOME/ssh-img-paste/active-profile"
 output="$(run_ok list)"
-assert_contains "$output" $'123\tlegacy.png'
+assert_contains "$output" $'123\tuploaded.png'
 assert_contains "$(cat "$TEST_LOG")" "prod-host"
 assert_not_contains "$(cat "$TEST_LOG")" "dev-host"
 assert_eq "$(run_ok profile current)" "prod"
@@ -242,10 +198,10 @@ pass "active named profile"
 # Explicit --profile targets that profile and does not mutate active-profile.
 : > "$TEST_LOG"
 output="$(run_ok --profile dev list)"
-assert_contains "$output" $'123\tlegacy.png'
+assert_contains "$output" $'123\tuploaded.png'
 assert_contains "$(cat "$TEST_LOG")" "dev-host"
 assert_not_contains "$(cat "$TEST_LOG")" "prod-host"
-assert_file_eq "$XDG_CONFIG_HOME/vps-img-paste/active-profile" "prod"
+assert_file_eq "$XDG_CONFIG_HOME/ssh-img-paste/active-profile" "prod"
 pass "explicit profile override is non-mutating"
 
 # Invalid/traversal profile IDs and missing profiles fail before SSH.
@@ -256,7 +212,7 @@ assert_eq "$(cat "$TEST_LOG")" ""
 output="$(run_fail --profile missing list)"
 assert_contains "$output" "SSH profile not found: missing"
 assert_eq "$(cat "$TEST_LOG")" ""
-printf '../escape\n' > "$XDG_CONFIG_HOME/vps-img-paste/active-profile"
+printf '../escape\n' > "$XDG_CONFIG_HOME/ssh-img-paste/active-profile"
 output="$(run_fail list)"
 assert_contains "$output" "Invalid profile"
 assert_eq "$(cat "$TEST_LOG")" ""
@@ -265,7 +221,7 @@ pass "invalid and missing profiles fail before SSH"
 # Metadata commands validate corrupted active state before reporting selection.
 reset_state
 write_profiles
-printf 'bad/name\n' > "$XDG_CONFIG_HOME/vps-img-paste/active-profile"
+printf 'bad/name\n' > "$XDG_CONFIG_HOME/ssh-img-paste/active-profile"
 : > "$TEST_LOG"
 output="$(run_fail profile current)"
 assert_contains "$output" "Invalid profile"
@@ -273,7 +229,7 @@ assert_eq "$(cat "$TEST_LOG")" ""
 output="$(run_fail profiles)"
 assert_contains "$output" "Invalid profile"
 assert_eq "$(cat "$TEST_LOG")" ""
-printf 'missing\n' > "$XDG_CONFIG_HOME/vps-img-paste/active-profile"
+printf 'missing\n' > "$XDG_CONFIG_HOME/ssh-img-paste/active-profile"
 output="$(run_fail profile current)"
 assert_contains "$output" "SSH profile not found: missing"
 assert_eq "$(cat "$TEST_LOG")" ""
@@ -287,7 +243,7 @@ reset_state
 assert_eq "$(run_ok profiles)" ""
 pass "profiles no-config emits no rows"
 
-# If no active file and no legacy config exists, first sorted named profile wins.
+# If no active file exists, the first sorted named profile wins.
 reset_state
 write_profiles
 output="$(run_ok profile current)"
@@ -297,41 +253,31 @@ run_ok list >/dev/null
 assert_contains "$(cat "$TEST_LOG")" "dev-host"
 pass "first sorted profile fallback"
 
-# Legacy default wins over profiles/default.env in profile listing and resolution.
+# Profiles emit stable tab-separated rows sorted by profile ID, without a header.
 reset_state
-write_legacy
-mkdir -p "$XDG_CONFIG_HOME/vps-img-paste/profiles"
-cat > "$XDG_CONFIG_HOME/vps-img-paste/profiles/default.env" <<'EOF'
-VPS_PROFILE_LABEL="Shadow Default"
-VPS_HOST="shadow-host"
-VPS_REMOTE_HOME="/srv/shadow"
-VPS_REMOTE_DIR="shadow-images"
+mkdir -p "$XDG_CONFIG_HOME/ssh-img-paste/profiles"
+cat > "$XDG_CONFIG_HOME/ssh-img-paste/profiles/default.env" <<'EOF'
+SSH_PROFILE_LABEL="Default"
+SSH_HOST="default-host"
+SSH_REMOTE_HOME="/srv/default"
+SSH_REMOTE_DIR="default-images"
 EOF
 write_profiles
-printf 'default\n' > "$XDG_CONFIG_HOME/vps-img-paste/active-profile"
+printf 'default\n' > "$XDG_CONFIG_HOME/ssh-img-paste/active-profile"
 output="$(run_ok profiles)"
-assert_contains "$output" $'*\tdefault\tLegacy\tlegacy-host'
-assert_not_contains "$output" "Shadow Default"
-: > "$TEST_LOG"
-run_ok list >/dev/null
-assert_contains "$(cat "$TEST_LOG")" "legacy-host"
-assert_not_contains "$(cat "$TEST_LOG")" "shadow-host"
-pass "legacy default wins over default.env"
-
-# profiles emits stable tab-separated rows sorted by profile ID, without a header.
-expected_profiles="$(printf '*\tdefault\tLegacy\tlegacy-host\n\tdev\tDevelopment\tdev-host\n\tprod\tProduction\tprod-host')"
+expected_profiles="$(printf '*\tdefault\tDefault\tdefault-host\n\tdev\tDevelopment\tdev-host\n\tprod\tProduction\tprod-host')"
 assert_eq "$output" "$expected_profiles"
 pass "profiles list stable rows"
 
 # Listing profiles loads each file independently; labels must not leak between rows.
 reset_state
-mkdir -p "$XDG_CONFIG_HOME/vps-img-paste/profiles"
-cat > "$XDG_CONFIG_HOME/vps-img-paste/profiles/aaa.env" <<'EOF'
-VPS_PROFILE_LABEL="First Label"
-VPS_HOST="first-host"
+mkdir -p "$XDG_CONFIG_HOME/ssh-img-paste/profiles"
+cat > "$XDG_CONFIG_HOME/ssh-img-paste/profiles/aaa.env" <<'EOF'
+SSH_PROFILE_LABEL="First Label"
+SSH_HOST="first-host"
 EOF
-cat > "$XDG_CONFIG_HOME/vps-img-paste/profiles/bbb.env" <<'EOF'
-VPS_HOST="second-host"
+cat > "$XDG_CONFIG_HOME/ssh-img-paste/profiles/bbb.env" <<'EOF'
+SSH_HOST="second-host"
 EOF
 output="$(run_ok profiles)"
 assert_contains "$output" $'*\taaa\tFirst Label\tfirst-host'
@@ -341,29 +287,28 @@ pass "profile enumeration does not leak sourced values"
 
 # profile use validates, writes active state atomically, and current reports it.
 reset_state
-write_legacy
 write_profiles
-printf 'default\n' > "$XDG_CONFIG_HOME/vps-img-paste/active-profile"
+printf 'prod\n' > "$XDG_CONFIG_HOME/ssh-img-paste/active-profile"
 output="$(run_ok profile use dev)"
 assert_contains "$output" "Development"
 assert_contains "$output" "dev-host"
-assert_file_eq "$XDG_CONFIG_HOME/vps-img-paste/active-profile" "dev"
+assert_file_eq "$XDG_CONFIG_HOME/ssh-img-paste/active-profile" "dev"
 assert_eq "$(run_ok profile current)" "dev"
 : > "$TEST_LOG"
 output="$(run_fail profile use bad/name)"
 assert_contains "$output" "Invalid profile"
-assert_file_eq "$XDG_CONFIG_HOME/vps-img-paste/active-profile" "dev"
+assert_file_eq "$XDG_CONFIG_HOME/ssh-img-paste/active-profile" "dev"
 assert_eq "$(cat "$TEST_LOG")" ""
 output="$(run_fail profile use missing)"
 assert_contains "$output" "SSH profile not found: missing"
-assert_file_eq "$XDG_CONFIG_HOME/vps-img-paste/active-profile" "dev"
+assert_file_eq "$XDG_CONFIG_HOME/ssh-img-paste/active-profile" "dev"
 assert_eq "$(cat "$TEST_LOG")" ""
 pass "profile current and use"
 
 # Upload/list/fetch/clean all target the selected profile and upload feedback names it.
 reset_state
 write_profiles
-printf 'prod\n' > "$XDG_CONFIG_HOME/vps-img-paste/active-profile"
+printf 'prod\n' > "$XDG_CONFIG_HOME/ssh-img-paste/active-profile"
 : > "$TEST_LOG"
 output="$(run_ok --profile dev upload)"
 assert_contains "$output" "Development"
@@ -421,14 +366,14 @@ assert_contains "$(cat "$TEST_LOG")" "/srv/dev/dev-images"
 
 # Notification AppleScript is constant source; hostile labels are argv data only.
 reset_state
-mkdir -p "$XDG_CONFIG_HOME/vps-img-paste/profiles"
+mkdir -p "$XDG_CONFIG_HOME/ssh-img-paste/profiles"
 malicious_label="Evil\" & do shell script \"touch $OSASCRIPT_MARKER\" & \""
-cat > "$XDG_CONFIG_HOME/vps-img-paste/profiles/evil.env" <<EOF
-VPS_PROFILE_LABEL="$malicious_label"
-VPS_HOST="evil-host"
-VPS_REMOTE_HOME="/srv/evil"
-VPS_REMOTE_DIR="evil-images"
-VPS_CLIP_RESTORE_SECONDS=0
+cat > "$XDG_CONFIG_HOME/ssh-img-paste/profiles/evil.env" <<EOF
+SSH_PROFILE_LABEL="$malicious_label"
+SSH_HOST="evil-host"
+SSH_REMOTE_HOME="/srv/evil"
+SSH_REMOTE_DIR="evil-images"
+SSH_CLIP_RESTORE_SECONDS=0
 EOF
 : > "$OSASCRIPT_LOG"
 : > "$OSASCRIPT_SOURCE_LOG"

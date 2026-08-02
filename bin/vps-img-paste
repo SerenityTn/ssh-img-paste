@@ -1,5 +1,0 @@
-#!/usr/bin/env bash
-# Compatibility entry point retained for VPS Image Paste 1.x users.
-set -euo pipefail
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-exec "$SCRIPT_DIR/ssh-img-paste" "$@"

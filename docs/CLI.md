@@ -1,6 +1,6 @@
 # Command-line reference
 
-`ssh-img-paste` uses the active profile unless `--profile ID` is provided. An explicit override applies to one command and does not change the active profile. The former `vps-img-paste` command remains a compatibility entry point with identical behavior.
+`ssh-img-paste` uses the active profile unless `--profile ID` is provided. An explicit override applies to one command and does not change the active profile.
 
 ## Upload and remote files
 

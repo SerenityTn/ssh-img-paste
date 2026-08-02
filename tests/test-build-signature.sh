@@ -11,7 +11,7 @@ APP="$TMP/Applications/SSHImagePaste.app"
 codesign --verify --strict "$APP"
 requirement="$(codesign -d --requirements - "$APP" 2>&1)"
 case "$requirement" in
-  *'designated => identifier "com.khaireddine.vpsimgpaste"'*) ;;
+  *'designated => identifier "com.khaireddine.sshimagepaste"'*) ;;
   *)
     printf 'FAIL: unstable or missing designated requirement: %s\n' "$requirement" >&2
     exit 1

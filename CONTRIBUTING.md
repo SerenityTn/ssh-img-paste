@@ -39,7 +39,7 @@ This replaces the source-installed app in `~/Applications` and reloads its Launc
 
 ## Architecture and security boundaries
 
-- `bin/ssh-img-paste` owns profile parsing, validation, persistence, active-profile resolution, and remote operations. `bin/vps-img-paste` is the compatibility entry point.
+- `bin/ssh-img-paste` owns profile parsing, validation, persistence, active-profile resolution, and remote operations.
 - The AppKit code calls the CLI with argument arrays. It must not build shell command strings from user input.
 - Profile files are parsed as literal data. Do not reintroduce `source`, `eval`, or executable config semantics.
 - SSH credentials and transport options stay in OpenSSH configuration, the keychain, and the SSH agent. The app stores only a destination host or alias and remote paths.

@@ -24,10 +24,10 @@ final class ProfileManagerWindowController: NSWindowController, NSWindowDelegate
     private let client: ScriptClient
     private let onMutation: () -> Void
 
-    private var profiles: [VPSProfile] = []
+    private var profiles: [SSHProfile] = []
     private var selectedID: String?
-    private var originalDraft: VPSProfileDraft?
-    private var draft = VPSProfileDraft.empty()
+    private var originalDraft: SSHProfileDraft?
+    private var draft = SSHProfileDraft.empty()
     private var currentDetails: ProfileDetails?
     private var isLoading = false
     private var isBusy = false
@@ -336,7 +336,7 @@ final class ProfileManagerWindowController: NSWindowController, NSWindowDelegate
                     self.applyProfileDetails(details)
                 } else if let summary = self.profiles.first(where: { $0.id == id }) {
                     self.currentDetails = nil
-                    self.draft = VPSProfileDraft(originalID: summary.id, id: summary.id, label: summary.label, host: summary.host, remoteHome: "/home/user", remoteDir: "img-uploads")
+                    self.draft = SSHProfileDraft(originalID: summary.id, id: summary.id, label: summary.label, host: summary.host, remoteHome: "/home/user", remoteDir: "img-uploads")
                     self.originalDraft = self.draft
                     self.statusLabel.stringValue = inspected.result.sanitizedError
                     self.populateFields()
@@ -350,7 +350,7 @@ final class ProfileManagerWindowController: NSWindowController, NSWindowDelegate
     private func applyProfileDetails(_ details: ProfileDetails) {
         isLoading = true
         currentDetails = details
-        draft = VPSProfileDraft(details: details)
+        draft = SSHProfileDraft(details: details)
         originalDraft = draft
         statusLabel.stringValue = "Local config: \(details.path.isEmpty ? "unknown" : details.path)"
         populateFields()
@@ -436,7 +436,7 @@ final class ProfileManagerWindowController: NSWindowController, NSWindowDelegate
         guard confirmDiscardIfNeeded() else { return }
         selectedID = nil
         currentDetails = nil
-        draft = VPSProfileDraft.empty()
+        draft = SSHProfileDraft.empty()
         originalDraft = draft
         suppressSelectionChange = true
         tableView.deselectAll(nil)
@@ -449,7 +449,7 @@ final class ProfileManagerWindowController: NSWindowController, NSWindowDelegate
 
     @objc private func revertDraft(_ sender: Any?) {
         guard !isBusy else { return }
-        if let original = originalDraft { draft = original } else { draft = VPSProfileDraft.empty() }
+        if let original = originalDraft { draft = original } else { draft = SSHProfileDraft.empty() }
         populateFields()
         validateAndRefreshButtons()
     }
@@ -553,9 +553,9 @@ final class ProfileManagerWindowController: NSWindowController, NSWindowDelegate
         alert.addButton(withTitle: "Cancel")
         guard alert.runModal() == .alertFirstButtonReturn else { return }
         let newID = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard VPSProfileDraft.isValidID(newID), newID != oldID else { statusLabel.stringValue = "Invalid or unchanged profile ID."; return }
+        guard SSHProfileDraft.isValidID(newID), newID != oldID else { statusLabel.stringValue = "Invalid or unchanged profile ID."; return }
         setBusy(true, message: "Renaming profile…")
-        client.runAsync(VPSProfileDraft.renameArguments(oldID: oldID, newID: newID)) { [weak self] result in
+        client.runAsync(SSHProfileDraft.renameArguments(oldID: oldID, newID: newID)) { [weak self] result in
             guard let self = self else { return }
             self.setBusy(false, message: result.succeeded ? "Renamed." : result.sanitizedError)
             if result.succeeded { self.onMutation(); self.reloadProfiles(select: newID) }
@@ -580,22 +580,21 @@ final class ProfileManagerWindowController: NSWindowController, NSWindowDelegate
         let alert = NSAlert()
         alert.messageText = "Delete \(profile.label)?"
         let path = detailSnapshot?.path ?? "unknown"
-        var text = "Profile label: \(profile.label)\nProfile ID: \(profile.id)\nHost: \(profile.host)\nLocal path: \(path)\n\nOnly the local profile config is deleted. Remote uploads are not deleted."
-        if detailSnapshot?.kind == .legacy || detailSnapshot?.kind == .env { text += "\n\nLegacy default warning: deleting this may remove ~/.config/vps-img-paste.env and reveal a shadowed profiles/default.env." }
+        let text = "Profile label: \(profile.label)\nProfile ID: \(profile.id)\nHost: \(profile.host)\nLocal path: \(path)\n\nOnly the local profile config is deleted. Remote uploads are not deleted."
         alert.informativeText = text
         alert.alertStyle = .warning
         alert.addButton(withTitle: "Delete Local Profile")
         alert.addButton(withTitle: "Cancel")
         guard alert.runModal() == .alertFirstButtonReturn else { return }
         setBusy(true, message: "Deleting profile…")
-        client.runAsync(VPSProfileDraft.deleteArguments(id: id, switchTo: replacement)) { [weak self] result in
+        client.runAsync(SSHProfileDraft.deleteArguments(id: id, switchTo: replacement)) { [weak self] result in
             guard let self = self else { return }
             self.setBusy(false, message: result.succeeded ? "Deleted." : result.sanitizedError)
             if result.succeeded { self.onMutation(); self.reloadProfiles(select: replacement) }
         }
     }
 
-    private func chooseDeletionReplacementIfNeeded(for profile: VPSProfile) -> String? {
+    private func chooseDeletionReplacementIfNeeded(for profile: SSHProfile) -> String? {
         guard profile.isActive else { return nil }
         let choices = profiles.filter { $0.id != profile.id }
         guard !choices.isEmpty else { return nil }

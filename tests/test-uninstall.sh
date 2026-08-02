@@ -15,21 +15,17 @@ export XDG_CONFIG_HOME="$HOME/.config"
 export PATH="$TMP/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 export TEST_LOG="$TMP/invocations.log"
 mkdir -p "$TMP/repo/bin" "$TMP/bin" "$HOME/Applications/SSHImagePaste.app/Contents/MacOS" \
-  "$HOME/Applications/VpsImgPaste.app/Contents/MacOS" \
-  "$HOME/Library/LaunchAgents" "$HOME/bin" "$XDG_CONFIG_HOME/vps-img-paste/profiles" \
+  "$HOME/Library/LaunchAgents" "$HOME/bin" "$XDG_CONFIG_HOME/ssh-img-paste/profiles" \
   "$TMP/Applications"
 cp "$ROOT/uninstall.sh" "$TMP/repo/uninstall.sh"
 printf '#!/usr/bin/env bash\n' > "$TMP/repo/bin/ssh-img-paste"
-printf '#!/usr/bin/env bash\n' > "$TMP/repo/bin/vps-img-paste"
-chmod +x "$TMP/repo/uninstall.sh" "$TMP/repo/bin/ssh-img-paste" "$TMP/repo/bin/vps-img-paste"
+chmod +x "$TMP/repo/uninstall.sh" "$TMP/repo/bin/ssh-img-paste"
 printf app > "$HOME/Applications/SSHImagePaste.app/Contents/MacOS/SSHImagePaste"
-printf app > "$HOME/Applications/VpsImgPaste.app/Contents/MacOS/VpsImgPaste"
-printf plist > "$HOME/Library/LaunchAgents/com.khaireddine.vpsimgpaste.plist"
+printf plist > "$HOME/Library/LaunchAgents/com.khaireddine.sshimagepaste.plist"
 ln -s "$TMP/repo/bin/ssh-img-paste" "$HOME/bin/ssh-img-paste"
-ln -s "$TMP/repo/bin/vps-img-paste" "$HOME/bin/vps-img-paste"
-ln -s "$HOME/Applications/VpsImgPaste.app" "$TMP/Applications/VpsImgPaste.app"
-printf profile > "$XDG_CONFIG_HOME/vps-img-paste/profiles/default.env"
-printf default > "$XDG_CONFIG_HOME/vps-img-paste/active-profile"
+ln -s "$HOME/Applications/SSHImagePaste.app" "$TMP/Applications/SSHImagePaste.app"
+printf profile > "$XDG_CONFIG_HOME/ssh-img-paste/profiles/default.env"
+printf default > "$XDG_CONFIG_HOME/ssh-img-paste/active-profile"
 : > "$TEST_LOG"
 
 cat > "$TMP/bin/launchctl" <<'MOCK'
@@ -56,24 +52,21 @@ chmod +x "$TMP/bin/launchctl" "$TMP/bin/pgrep"
 ) > "$TMP/uninstall.out"
 
 assert_not_exists "$HOME/Applications/SSHImagePaste.app"
-assert_not_exists "$HOME/Applications/VpsImgPaste.app"
-assert_not_exists "$HOME/Library/LaunchAgents/com.khaireddine.vpsimgpaste.plist"
+assert_not_exists "$HOME/Library/LaunchAgents/com.khaireddine.sshimagepaste.plist"
 assert_not_exists "$HOME/bin/ssh-img-paste"
-assert_not_exists "$HOME/bin/vps-img-paste"
-assert_exists "$XDG_CONFIG_HOME/vps-img-paste/profiles/default.env"
-assert_exists "$XDG_CONFIG_HOME/vps-img-paste/active-profile"
+assert_exists "$XDG_CONFIG_HOME/ssh-img-paste/profiles/default.env"
+assert_exists "$XDG_CONFIG_HOME/ssh-img-paste/active-profile"
 assert_contains "$(cat "$TEST_LOG")" "$(printf 'pgrep\t-f\t^%s$' "$HOME/Applications/SSHImagePaste.app/Contents/MacOS/SSHImagePaste")"
-assert_contains "$(cat "$TEST_LOG")" "$(printf 'pgrep\t-f\t^%s$' "$HOME/Applications/VpsImgPaste.app/Contents/MacOS/VpsImgPaste")"
 
 # Never remove a CLI symlink owned by another installation.
 printf '#!/usr/bin/env bash\n' > "$TMP/other-cli"
 chmod +x "$TMP/other-cli"
-ln -s "$TMP/other-cli" "$HOME/bin/vps-img-paste"
+ln -s "$TMP/other-cli" "$HOME/bin/ssh-img-paste"
 (
   cd "$TMP/repo"
   ./uninstall.sh
 ) >/dev/null
-assert_exists "$HOME/bin/vps-img-paste"
-[ "$(readlink "$HOME/bin/vps-img-paste")" = "$TMP/other-cli" ] || fail "foreign CLI symlink changed"
+assert_exists "$HOME/bin/ssh-img-paste"
+[ "$(readlink "$HOME/bin/ssh-img-paste")" = "$TMP/other-cli" ] || fail "foreign CLI symlink changed"
 
 printf 'PASS: source uninstaller removes owned files and preserves profiles and foreign links\n'

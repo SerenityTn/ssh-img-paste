@@ -2,12 +2,12 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-TMP="$(mktemp -d -t vps-img-paste-profile-tests)"
+TMP="$(mktemp -d -t ssh-img-paste-profile-tests)"
 trap 'rm -rf "$TMP"' EXIT
 
 export HOME="$TMP/home"
 export XDG_CONFIG_HOME="$HOME/.config"
-export VPS_IMG_PASTE_CONFIG_DIR="$XDG_CONFIG_HOME/vps-img-paste"
+export SSH_IMG_PASTE_CONFIG_DIR="$XDG_CONFIG_HOME/ssh-img-paste"
 export PATH="$TMP/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 export TEST_LOG="$TMP/invocations.log"
 mkdir -p "$HOME/.config" "$TMP/bin"
@@ -23,23 +23,23 @@ assert_file_mode() {
   got="$(stat -f '%OLp' "$path" 2>/dev/null || stat -c '%a' "$path")"
   [ "$got" = "$expected" ] || fail "expected mode $expected for $path, got $got"
 }
-assert_profile_file_exists() { [ -f "$XDG_CONFIG_HOME/vps-img-paste/profiles/$1.env" ] || fail "expected profile file for $1"; }
-assert_profile_file_missing() { [ ! -e "$XDG_CONFIG_HOME/vps-img-paste/profiles/$1.env" ] || fail "expected no profile file for $1"; }
+assert_profile_file_exists() { [ -f "$XDG_CONFIG_HOME/ssh-img-paste/profiles/$1.env" ] || fail "expected profile file for $1"; }
+assert_profile_file_missing() { [ ! -e "$XDG_CONFIG_HOME/ssh-img-paste/profiles/$1.env" ] || fail "expected no profile file for $1"; }
 assert_key() {
   local output="$1" key="$2" expected="$3" got
   got="$(printf '%s\n' "$output" | while IFS=$'\t' read -r k v; do [ "$k" = "$key" ] && { printf '%s' "$v"; exit 0; }; done)"
   [ "$got" = "$expected" ] || fail "expected inspect $key=[$expected], got [$got] in [$output]"
 }
 reset_state() {
-  rm -rf "$HOME/.config/vps-img-paste" "$HOME/.config/vps-img-paste.env" "$TEST_LOG" "$TMP/marker"
+  rm -rf "$HOME/.config/ssh-img-paste" "$TEST_LOG" "$TMP/marker"
   mkdir -p "$HOME/.config"
   : > "$TEST_LOG"
 }
-run_ok() { "$ROOT/bin/vps-img-paste" "$@"; }
+run_ok() { "$ROOT/bin/ssh-img-paste" "$@"; }
 run_status() {
   local status
   set +e
-  "$ROOT/bin/vps-img-paste" "$@" > "$TMP/out" 2>&1
+  "$ROOT/bin/ssh-img-paste" "$@" > "$TMP/out" 2>&1
   status=$?
   RUN_OUT="$(cat "$TMP/out")"
   return "$status"
@@ -53,24 +53,14 @@ expect_status() {
   set -e
   [ "$status" -eq "$expected" ] || fail "expected status $expected for $*, got $status output: $RUN_OUT"
 }
-write_legacy() {
-  cat > "$XDG_CONFIG_HOME/vps-img-paste.env" <<'EOF'
-# legacy comment
-VPS_PROFILE_LABEL="Legacy"
-VPS_HOST="legacy-host"
-VPS_REMOTE_HOME="/srv/legacy"
-VPS_REMOTE_DIR="legacy-images"
-VPS_CLIP_RESTORE_SECONDS=0
-EOF
-}
 write_manual() {
-  mkdir -p "$XDG_CONFIG_HOME/vps-img-paste/profiles"
-  cat > "$XDG_CONFIG_HOME/vps-img-paste/profiles/manual.env" <<'EOF'
+  mkdir -p "$XDG_CONFIG_HOME/ssh-img-paste/profiles"
+  cat > "$XDG_CONFIG_HOME/ssh-img-paste/profiles/manual.env" <<'EOF'
 # unsupported, but still inspectable and usable without executing this line
-VPS_PROFILE_LABEL="Manual"
-VPS_HOST="manual-host"
-VPS_REMOTE_HOME="/srv/manual"
-VPS_REMOTE_DIR="manual-images"
+SSH_PROFILE_LABEL="Manual"
+SSH_HOST="manual-host"
+SSH_REMOTE_HOME="/srv/manual"
+SSH_REMOTE_DIR="manual-images"
 touch "$TMP/marker"
 EOF
 }
@@ -146,19 +136,19 @@ assert_key "$inspect" editable true
 assert_key "$inspect" active true
 profiles="$(run_ok profiles)"
 assert_eq "$profiles" $'*\tdev\tDevelopment\tdev-host'
-assert_file_mode "$XDG_CONFIG_HOME/vps-img-paste/profiles/dev.env" 600
-assert_file_mode "$XDG_CONFIG_HOME/vps-img-paste/active-profile" 600
+assert_file_mode "$XDG_CONFIG_HOME/ssh-img-paste/profiles/dev.env" 600
+assert_file_mode "$XDG_CONFIG_HOME/ssh-img-paste/active-profile" 600
 pass "create inspect activation permissions and profiles contract"
 
 # Partial update preserves comments and unrelated supported settings.
-printf '# keep me\nVPS_PROFILE_LABEL="Development"\nVPS_HOST="dev-host"\nVPS_REMOTE_HOME="/srv/dev"\nVPS_REMOTE_DIR="dev-images"\nVPS_EXTRA="preserve"\nVPS_CLIP_RESTORE_SECONDS=7\n' > "$XDG_CONFIG_HOME/vps-img-paste/profiles/dev.env"
+printf '# keep me\nSSH_PROFILE_LABEL="Development"\nSSH_HOST="dev-host"\nSSH_REMOTE_HOME="/srv/dev"\nSSH_REMOTE_DIR="dev-images"\nSSH_EXTRA="preserve"\nSSH_CLIP_RESTORE_SECONDS=7\n' > "$XDG_CONFIG_HOME/ssh-img-paste/profiles/dev.env"
 run_ok profile update dev --label Dev2 --restore-seconds 0 >/dev/null
 inspect="$(run_ok profile inspect dev)"
 assert_key "$inspect" label Dev2
 assert_key "$inspect" host dev-host
 assert_key "$inspect" restore_seconds 0
-assert_contains "$(cat "$XDG_CONFIG_HOME/vps-img-paste/profiles/dev.env")" "# keep me"
-assert_contains "$(cat "$XDG_CONFIG_HOME/vps-img-paste/profiles/dev.env")" 'VPS_EXTRA="preserve"'
+assert_contains "$(cat "$XDG_CONFIG_HOME/ssh-img-paste/profiles/dev.env")" "# keep me"
+assert_contains "$(cat "$XDG_CONFIG_HOME/ssh-img-paste/profiles/dev.env")" 'SSH_EXTRA="preserve"'
 pass "partial update preserves supported file content"
 
 # Rename updates active under same operation; delete active requires valid switch; last usable delete is blocked.
@@ -169,7 +159,7 @@ expect_status 64 profile delete stage
 assert_contains "$RUN_OUT" "--switch-to"
 run_ok profile delete stage --switch-to prod >/dev/null
 assert_eq "$(run_ok profile current)" "prod"
-[ ! -e "$XDG_CONFIG_HOME/vps-img-paste/profiles/stage.env" ] || fail "stage file still exists"
+[ ! -e "$XDG_CONFIG_HOME/ssh-img-paste/profiles/stage.env" ] || fail "stage file still exists"
 expect_status 64 profile delete prod
 assert_contains "$RUN_OUT" "last usable"
 pass "rename active replacement and last delete"
@@ -180,22 +170,22 @@ export FAIL_ACTIVE_WRITE=1
 expect_status 73 profile create first --label First --host first-host --remote-home /srv/first --remote-dir imgs
 unset FAIL_ACTIVE_WRITE
 assert_profile_file_missing first
-[ ! -e "$XDG_CONFIG_HOME/vps-img-paste/active-profile" ] || fail "active-profile should not exist after failed first create"
+[ ! -e "$XDG_CONFIG_HOME/ssh-img-paste/active-profile" ] || fail "active-profile should not exist after failed first create"
 pass "first create active write failure rolls back profile file"
 
 reset_state
-mkdir -p "$XDG_CONFIG_HOME/vps-img-paste"
-printf 'missing\n' > "$XDG_CONFIG_HOME/vps-img-paste/active-profile"
+mkdir -p "$XDG_CONFIG_HOME/ssh-img-paste"
+printf 'missing\n' > "$XDG_CONFIG_HOME/ssh-img-paste/active-profile"
 export FAIL_ACTIVE_WRITE=1
 expect_status 73 profile create stalefail --label StaleFail --host stale-host --remote-home /srv/stale --remote-dir imgs
 unset FAIL_ACTIVE_WRITE
 assert_profile_file_missing stalefail
-assert_eq "$(cat "$XDG_CONFIG_HOME/vps-img-paste/active-profile")" "missing"
+assert_eq "$(cat "$XDG_CONFIG_HOME/ssh-img-paste/active-profile")" "missing"
 pass "stale active write failure rolls back profile file"
 
 reset_state
-mkdir -p "$XDG_CONFIG_HOME/vps-img-paste"
-printf 'missing\n' > "$XDG_CONFIG_HOME/vps-img-paste/active-profile"
+mkdir -p "$XDG_CONFIG_HOME/ssh-img-paste"
+printf 'missing\n' > "$XDG_CONFIG_HOME/ssh-img-paste/active-profile"
 run_ok profile create recovered --label Recovered --host recovered-host --remote-home /srv/recovered --remote-dir imgs >/dev/null
 assert_profile_file_exists recovered
 assert_eq "$(run_ok profile current)" "recovered"
@@ -239,20 +229,6 @@ assert_profile_file_exists old
 assert_profile_file_exists spare
 pass "active delete removal failure leaves switched active state valid"
 
-# Legacy default shadows profiles/default.env deterministically and duplicate create is rejected.
-reset_state
-write_legacy
-run_ok profile create other --label Other --host other-host --remote-home /srv/other --remote-dir imgs >/dev/null
-mkdir -p "$XDG_CONFIG_HOME/vps-img-paste/profiles"
-printf 'VPS_PROFILE_LABEL="Shadow"\nVPS_HOST="shadow-host"\n' > "$XDG_CONFIG_HOME/vps-img-paste/profiles/default.env"
-inspect="$(run_ok profile inspect default)"
-assert_key "$inspect" label Legacy
-assert_key "$inspect" host legacy-host
-assert_key "$inspect" kind legacy
-expect_status 64 profile create default --label New --host new-host --remote-home /srv/new --remote-dir imgs
-assert_contains "$RUN_OUT" "already exists"
-pass "legacy shadowed default"
-
 # Manual unsupported logic is never executed, remains usable/testable/deletable, and update returns 77.
 reset_state
 write_manual
@@ -267,20 +243,20 @@ assert_contains "$(cat "$TEST_LOG")" $'\tmanual-host\t/usr/bin/true'
 expect_status 77 profile update manual --label Nope
 run_ok profile create keep --label Keep --host keep-host --remote-home /srv/keep --remote-dir imgs >/dev/null
 run_ok profile delete manual --switch-to keep >/dev/null
-[ ! -e "$XDG_CONFIG_HOME/vps-img-paste/profiles/manual.env" ] || fail "manual file still exists"
+[ ! -e "$XDG_CONFIG_HOME/ssh-img-paste/profiles/manual.env" ] || fail "manual file still exists"
 pass "manual profile is read-only and non-executing"
 
 reset_state
-mkdir -p "$XDG_CONFIG_HOME/vps-img-paste/profiles"
-printf 'VPS_PROFILE_LABEL="Manual"\nVPS_HOST="literal-host"\nVPS_REMOTE_HOME="/srv/manual"\nVPS_REMOTE_DIR="manual-images"\nVPS_EXTRA=${USER}\n' > "$XDG_CONFIG_HOME/vps-img-paste/profiles/manual.env"
+mkdir -p "$XDG_CONFIG_HOME/ssh-img-paste/profiles"
+printf 'SSH_PROFILE_LABEL="Manual"\nSSH_HOST="literal-host"\nSSH_REMOTE_HOME="/srv/manual"\nSSH_REMOTE_DIR="manual-images"\nSSH_EXTRA=${USER}\n' > "$XDG_CONFIG_HOME/ssh-img-paste/profiles/manual.env"
 inspect="$(run_ok profile inspect manual)"
 assert_key "$inspect" label Manual
 assert_key "$inspect" host literal-host
 assert_key "$inspect" editable false
-printf 'VPS_PROFILE_LABEL="Dynamic"\nVPS_HOST=${USER}@host\nVPS_REMOTE_HOME="/srv/manual"\nVPS_REMOTE_DIR="manual-images"\n' > "$XDG_CONFIG_HOME/vps-img-paste/profiles/dynamic.env"
+printf 'SSH_PROFILE_LABEL="Dynamic"\nSSH_HOST=${USER}@host\nSSH_REMOTE_HOME="/srv/manual"\nSSH_REMOTE_DIR="manual-images"\n' > "$XDG_CONFIG_HOME/ssh-img-paste/profiles/dynamic.env"
 expect_status 64 profile inspect dynamic
 assert_contains "$RUN_OUT" "Only literal assignments are supported"
-assert_contains "$RUN_OUT" "VPS_HOST"
+assert_contains "$RUN_OUT" "SSH_HOST"
 assert_eq "$(cat "$TEST_LOG")" ""
 pass "dynamic supported assignments fail clearly while unsupported extras remain read-only usable"
 
@@ -312,40 +288,40 @@ run_ok profile create max_delay --label Max --host max-host --remote-home /srv/m
 assert_key "$(run_ok profile inspect max_delay)" restore_seconds 86400
 run_ok profile create max_padded_delay --label MaxPad --host maxpad-host --remote-home /srv/maxpad --remote-dir imgs --restore-seconds 086400 >/dev/null
 assert_key "$(run_ok profile inspect max_padded_delay)" restore_seconds 086400
-profile_before="$(cat "$XDG_CONFIG_HOME/vps-img-paste/profiles/max_delay.env")"
+profile_before="$(cat "$XDG_CONFIG_HOME/ssh-img-paste/profiles/max_delay.env")"
 expect_status 64 profile update max_delay --restore-seconds 86401
-assert_eq "$(cat "$XDG_CONFIG_HOME/vps-img-paste/profiles/max_delay.env")" "$profile_before"
+assert_eq "$(cat "$XDG_CONFIG_HOME/ssh-img-paste/profiles/max_delay.env")" "$profile_before"
 expect_status 64 profile update max_delay --restore-seconds 999999
-assert_eq "$(cat "$XDG_CONFIG_HOME/vps-img-paste/profiles/max_delay.env")" "$profile_before"
+assert_eq "$(cat "$XDG_CONFIG_HOME/ssh-img-paste/profiles/max_delay.env")" "$profile_before"
 expect_status 64 profile update max_delay --restore-seconds "$huge_delay"
 assert_contains "$RUN_OUT" "Invalid restore_seconds"
-assert_eq "$(cat "$XDG_CONFIG_HOME/vps-img-paste/profiles/max_delay.env")" "$profile_before"
+assert_eq "$(cat "$XDG_CONFIG_HOME/ssh-img-paste/profiles/max_delay.env")" "$profile_before"
 pass "validation rejects injection traversal controls and out-of-range restore delay before side effects"
 
 # Loaded remote fields are validated before SSH/SCP.
-mkdir -p "$XDG_CONFIG_HOME/vps-img-paste/profiles"
-printf 'VPS_PROFILE_LABEL="Bad"\nVPS_HOST="ok-host"\nVPS_REMOTE_HOME="/srv"\nVPS_REMOTE_DIR="bad;dir"\n' > "$XDG_CONFIG_HOME/vps-img-paste/profiles/bad.env"
+mkdir -p "$XDG_CONFIG_HOME/ssh-img-paste/profiles"
+printf 'SSH_PROFILE_LABEL="Bad"\nSSH_HOST="ok-host"\nSSH_REMOTE_HOME="/srv"\nSSH_REMOTE_DIR="bad;dir"\n' > "$XDG_CONFIG_HOME/ssh-img-paste/profiles/bad.env"
 expect_status 64 --profile bad list
 assert_eq "$(cat "$TEST_LOG")" ""
-printf 'VPS_PROFILE_LABEL="Slow"\nVPS_HOST="ok-host"\nVPS_REMOTE_HOME="/srv"\nVPS_REMOTE_DIR="imgs"\nVPS_CLIP_RESTORE_SECONDS=86401\n' > "$XDG_CONFIG_HOME/vps-img-paste/profiles/slow.env"
+printf 'SSH_PROFILE_LABEL="Slow"\nSSH_HOST="ok-host"\nSSH_REMOTE_HOME="/srv"\nSSH_REMOTE_DIR="imgs"\nSSH_CLIP_RESTORE_SECONDS=86401\n' > "$XDG_CONFIG_HOME/ssh-img-paste/profiles/slow.env"
 expect_status 64 --profile slow list
 assert_contains "$RUN_OUT" "Invalid restore_seconds"
 assert_eq "$(cat "$TEST_LOG")" ""
-printf 'VPS_PROFILE_LABEL="Overflow"\nVPS_HOST="ok-host"\nVPS_REMOTE_HOME="/srv"\nVPS_REMOTE_DIR="imgs"\nVPS_CLIP_RESTORE_SECONDS=%s\n' "$huge_delay" > "$XDG_CONFIG_HOME/vps-img-paste/profiles/slow.env"
+printf 'SSH_PROFILE_LABEL="Overflow"\nSSH_HOST="ok-host"\nSSH_REMOTE_HOME="/srv"\nSSH_REMOTE_DIR="imgs"\nSSH_CLIP_RESTORE_SECONDS=%s\n' "$huge_delay" > "$XDG_CONFIG_HOME/ssh-img-paste/profiles/slow.env"
 expect_status 64 --profile slow list
 assert_contains "$RUN_OUT" "Invalid restore_seconds"
 assert_eq "$(cat "$TEST_LOG")" ""
-printf 'VPS_PROFILE_LABEL="Max"\nVPS_HOST="ok-host"\nVPS_REMOTE_HOME="/srv"\nVPS_REMOTE_DIR="imgs"\nVPS_CLIP_RESTORE_SECONDS=86400\n' > "$XDG_CONFIG_HOME/vps-img-paste/profiles/slow.env"
+printf 'SSH_PROFILE_LABEL="Max"\nSSH_HOST="ok-host"\nSSH_REMOTE_HOME="/srv"\nSSH_REMOTE_DIR="imgs"\nSSH_CLIP_RESTORE_SECONDS=86400\n' > "$XDG_CONFIG_HOME/ssh-img-paste/profiles/slow.env"
 assert_key "$(run_ok profile inspect slow)" restore_seconds 86400
 pass "loaded remote fields and restore delay validate before network"
 
 # Loaded labels reject controls before machine output or network use; empty labels still fall back to ID.
 reset_state
-mkdir -p "$XDG_CONFIG_HOME/vps-img-paste/profiles"
-printf 'VPS_PROFILE_LABEL=""\nVPS_HOST="empty-host"\nVPS_REMOTE_HOME="/srv/empty"\nVPS_REMOTE_DIR="imgs"\n' > "$XDG_CONFIG_HOME/vps-img-paste/profiles/empty.env"
+mkdir -p "$XDG_CONFIG_HOME/ssh-img-paste/profiles"
+printf 'SSH_PROFILE_LABEL=""\nSSH_HOST="empty-host"\nSSH_REMOTE_HOME="/srv/empty"\nSSH_REMOTE_DIR="imgs"\n' > "$XDG_CONFIG_HOME/ssh-img-paste/profiles/empty.env"
 assert_key "$(run_ok profile inspect empty)" label empty
-printf 'bad' > "$XDG_CONFIG_HOME/vps-img-paste/active-profile"
-printf 'VPS_PROFILE_LABEL="Bad\tLabel"\nVPS_HOST="ok-host"\nVPS_REMOTE_HOME="/srv"\nVPS_REMOTE_DIR="imgs"\n' > "$XDG_CONFIG_HOME/vps-img-paste/profiles/bad.env"
+printf 'bad' > "$XDG_CONFIG_HOME/ssh-img-paste/active-profile"
+printf 'SSH_PROFILE_LABEL="Bad\tLabel"\nSSH_HOST="ok-host"\nSSH_REMOTE_HOME="/srv"\nSSH_REMOTE_DIR="imgs"\n' > "$XDG_CONFIG_HOME/ssh-img-paste/profiles/bad.env"
 : > "$TEST_LOG"
 expect_status 64 profiles
 assert_contains "$RUN_OUT" "Invalid label"
@@ -354,7 +330,7 @@ expect_status 64 profile inspect bad
 assert_contains "$RUN_OUT" "Invalid label"
 assert_not_contains "$RUN_OUT" $'\t'
 assert_eq "$(cat "$TEST_LOG")" ""
-printf 'VPS_PROFILE_LABEL="Bad\001Label"\nVPS_HOST="ok-host"\nVPS_REMOTE_HOME="/srv"\nVPS_REMOTE_DIR="imgs"\n' > "$XDG_CONFIG_HOME/vps-img-paste/profiles/bad.env"
+printf 'SSH_PROFILE_LABEL="Bad\001Label"\nSSH_HOST="ok-host"\nSSH_REMOTE_HOME="/srv"\nSSH_REMOTE_DIR="imgs"\n' > "$XDG_CONFIG_HOME/ssh-img-paste/profiles/bad.env"
 expect_status 64 profiles
 assert_contains "$RUN_OUT" "Invalid label"
 assert_not_contains "$RUN_OUT" $'\t'
@@ -362,49 +338,37 @@ expect_status 64 profile inspect bad
 assert_contains "$RUN_OUT" "Invalid label"
 assert_not_contains "$RUN_OUT" $'\t'
 assert_eq "$(cat "$TEST_LOG")" ""
-export VPS_PROFILE_LABEL=$'Bad\nLabel'
-export VPS_HOST="env-host"
-export VPS_REMOTE_HOME="/srv/env"
-export VPS_REMOTE_DIR="imgs"
-expect_status 64 --profile default profiles
-assert_contains "$RUN_OUT" "Invalid label"
-assert_not_contains "$RUN_OUT" $'\t'
-expect_status 64 profile inspect default
-assert_contains "$RUN_OUT" "Invalid label"
-assert_not_contains "$RUN_OUT" $'\t'
-assert_eq "$(cat "$TEST_LOG")" ""
-unset VPS_PROFILE_LABEL VPS_HOST VPS_REMOTE_HOME VPS_REMOTE_DIR
 pass "loaded label controls fail safely and empty label falls back to id"
 
 # Symlink and lock refusal/recovery.
 reset_state
-mkdir -p "$XDG_CONFIG_HOME/vps-img-paste/profiles"
-ln -s "$TMP/elsewhere" "$XDG_CONFIG_HOME/vps-img-paste/profiles/link.env"
+mkdir -p "$XDG_CONFIG_HOME/ssh-img-paste/profiles"
+ln -s "$TMP/elsewhere" "$XDG_CONFIG_HOME/ssh-img-paste/profiles/link.env"
 expect_status 73 profile create link --label Link --host link-host --remote-home /srv/link --remote-dir imgs
-mkdir -p "$XDG_CONFIG_HOME/vps-img-paste/.lock"
+mkdir -p "$XDG_CONFIG_HOME/ssh-img-paste/.lock"
 expect_status 73 profile create locked --label Locked --host locked-host --remote-home /srv/locked --remote-dir imgs
-rm -rf "$XDG_CONFIG_HOME/vps-img-paste/.lock"
-ln -s "$TMP/elsewhere-lock" "$XDG_CONFIG_HOME/vps-img-paste/.lock"
+rm -rf "$XDG_CONFIG_HOME/ssh-img-paste/.lock"
+ln -s "$TMP/elsewhere-lock" "$XDG_CONFIG_HOME/ssh-img-paste/.lock"
 expect_status 73 profile create symlinklock --label Locked --host locked-host --remote-home /srv/locked --remote-dir imgs
-rm -f "$XDG_CONFIG_HOME/vps-img-paste/.lock"
-mkdir -p "$XDG_CONFIG_HOME/vps-img-paste/.lock"
-printf '%s\n' "$$" > "$XDG_CONFIG_HOME/vps-img-paste/.lock/owner"
+rm -f "$XDG_CONFIG_HOME/ssh-img-paste/.lock"
+mkdir -p "$XDG_CONFIG_HOME/ssh-img-paste/.lock"
+printf '%s\n' "$$" > "$XDG_CONFIG_HOME/ssh-img-paste/.lock/owner"
 expect_status 73 profile create livelock --label Live --host live-host --remote-home /srv/live --remote-dir imgs
-rm -f "$XDG_CONFIG_HOME/vps-img-paste/.lock/owner"
-rmdir "$XDG_CONFIG_HOME/vps-img-paste/.lock"
-mkdir -p "$XDG_CONFIG_HOME/vps-img-paste/.lock"
-printf '999999\n' > "$XDG_CONFIG_HOME/vps-img-paste/.lock/owner"
+rm -f "$XDG_CONFIG_HOME/ssh-img-paste/.lock/owner"
+rmdir "$XDG_CONFIG_HOME/ssh-img-paste/.lock"
+mkdir -p "$XDG_CONFIG_HOME/ssh-img-paste/.lock"
+printf '999999\n' > "$XDG_CONFIG_HOME/ssh-img-paste/.lock/owner"
 run_ok profile create stalerecovered --label Stale --host stale-host --remote-home /srv/stale --remote-dir imgs >/dev/null
 assert_profile_file_exists stalerecovered
-[ ! -e "$XDG_CONFIG_HOME/vps-img-paste/.lock" ] || fail "stale lock was not cleaned after successful mutation"
+[ ! -e "$XDG_CONFIG_HOME/ssh-img-paste/.lock" ] || fail "stale lock was not cleaned after successful mutation"
 reset_state
-mkdir -p "$XDG_CONFIG_HOME/vps-img-paste"
+mkdir -p "$XDG_CONFIG_HOME/ssh-img-paste"
 set +e
-KILL_DURING_CP=1 "$ROOT/bin/vps-img-paste" profile create interrupted --label Interrupted --host int-host --remote-home /srv/int --remote-dir imgs > "$TMP/out" 2>&1
+KILL_DURING_CP=1 "$ROOT/bin/ssh-img-paste" profile create interrupted --label Interrupted --host int-host --remote-home /srv/int --remote-dir imgs > "$TMP/out" 2>&1
 status=$?
 set -e
 [ "$status" -ne 0 ] || fail "expected interrupted create to fail"
-[ ! -e "$XDG_CONFIG_HOME/vps-img-paste/.lock" ] || fail "interrupted mutation left lock behind"
+[ ! -e "$XDG_CONFIG_HOME/ssh-img-paste/.lock" ] || fail "interrupted mutation left lock behind"
 pass "symlink live stale and interrupted lock handling"
 
 # profile test status and delete never calls ssh.

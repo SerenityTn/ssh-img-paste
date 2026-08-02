@@ -241,7 +241,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func refreshUploads(_ sender: NSMenuItem) {
-        guard let profile = sender.representedObject as? VPSProfile else {
+        guard let profile = sender.representedObject as? SSHProfile else {
             flash("exclamationmark.triangle")
             return
         }
@@ -274,7 +274,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func cleanUploads(_ sender: NSMenuItem) {
-        guard let profile = sender.representedObject as? VPSProfile else {
+        guard let profile = sender.representedObject as? SSHProfile else {
             flash("exclamationmark.triangle")
             return
         }
@@ -338,7 +338,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return args
     }
 
-    private func loadUploads(for profile: VPSProfile, reopenMenu: Bool) {
+    private func loadUploads(for profile: SSHProfile, reopenMenu: Bool) {
         guard !loadingUploads.contains(profile.id) else { return }
         loadingUploads.insert(profile.id)
         setIcon("arrow.clockwise")
@@ -366,7 +366,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return files
     }
 
-    private func listProfiles() -> ([VPSProfile], Bool) {
+    private func listProfiles() -> ([SSHProfile], Bool) {
         let response = scriptClient.listProfiles()
         return (response.profiles, response.ok)
     }
@@ -399,11 +399,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file)
     }
 
-    private func destinationLabel(_ profile: VPSProfile?) -> String {
+    private func destinationLabel(_ profile: SSHProfile?) -> String {
         profile?.label ?? "No active destination"
     }
 
-    private func uploadsTitle(cache: UploadCacheEntry?, loading: Bool, profile: VPSProfile?) -> String {
+    private func uploadsTitle(cache: UploadCacheEntry?, loading: Bool, profile: SSHProfile?) -> String {
         let destination = destinationLabel(profile)
         if loading { return "Uploaded Images on \(destination) (loading…)" }
         guard let cache = cache else { return "Uploaded Images on \(destination) (not loaded)" }

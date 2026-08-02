@@ -26,7 +26,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 <dict>
   <key>CFBundleName</key><string>SSHImagePaste</string>
   <key>CFBundleDisplayName</key><string>SSH Image Paste</string>
-  <key>CFBundleIdentifier</key><string>com.khaireddine.vpsimgpaste</string>
+  <key>CFBundleIdentifier</key><string>com.khaireddine.sshimagepaste</string>
   <key>CFBundleExecutable</key><string>SSHImagePaste</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>$VERSION</string>
@@ -48,6 +48,6 @@ swiftc -O -target "$ARCH-apple-macos13.0" -o "$APP/Contents/MacOS/SSHImagePaste"
 # client. Keep the ad-hoc build, but give it a stable bundle-ID requirement so a
 # user's permission survives source rebuilds.
 codesign --force --sign - \
-  --requirements '=designated => identifier "com.khaireddine.vpsimgpaste"' \
+  --requirements '=designated => identifier "com.khaireddine.sshimagepaste"' \
   "$APP"
 echo "✓ Built $APP"
