@@ -4,6 +4,18 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-08-02
+
+### Changed
+
+- Renamed the public product, app, CLI, repository, and Homebrew formula to SSH Image Paste / `ssh-img-paste`.
+- Fresh installations use `~/.config/ssh-img-paste`, while existing VPS Image Paste 1.x configuration is detected and used in place.
+
+### Compatibility
+
+- Retained `vps-img-paste` as a CLI compatibility entry point.
+- Retained the existing profile schema, bundle identifier, and LaunchAgent label so upgrades preserve profiles and macOS Screen Recording permission.
+
 ## [1.2.0] - 2026-08-01
 
 ### Added
@@ -38,7 +50,8 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - First public release of the menu-bar app and CLI.
 - Added clipboard image upload, screenshot fallback, remote image browsing and cleanup, clipboard restoration, Homebrew packaging, and MIT licensing.
 
-[Unreleased]: https://github.com/SerenityTn/vps-img-paste/compare/v1.2.0...HEAD
-[1.2.0]: https://github.com/SerenityTn/vps-img-paste/compare/v1.1.0...v1.2.0
-[1.1.0]: https://github.com/SerenityTn/vps-img-paste/compare/v1.0.0...v1.1.0
-[1.0.0]: https://github.com/SerenityTn/vps-img-paste/releases/tag/v1.0.0
+[Unreleased]: https://github.com/SerenityTn/ssh-img-paste/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/SerenityTn/ssh-img-paste/compare/v1.2.0...v1.3.0
+[1.2.0]: https://github.com/SerenityTn/ssh-img-paste/compare/v1.1.0...v1.2.0
+[1.1.0]: https://github.com/SerenityTn/ssh-img-paste/compare/v1.0.0...v1.1.0
+[1.0.0]: https://github.com/SerenityTn/ssh-img-paste/releases/tag/v1.0.0

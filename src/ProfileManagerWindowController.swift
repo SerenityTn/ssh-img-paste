@@ -64,7 +64,7 @@ final class ProfileManagerWindowController: NSWindowController, NSWindowDelegate
         let window = ProfileManagerWindow(contentRect: NSRect(x: 0, y: 0, width: 860, height: 560),
                               styleMask: [.titled, .closable, .miniaturizable, .resizable],
                               backing: .buffered, defer: false)
-        window.title = "Manage VPS Profiles"
+        window.title = "Manage SSH Profiles"
         window.minSize = NSSize(width: 760, height: 500)
         super.init(window: window)
         window.profileController = self
@@ -112,9 +112,9 @@ final class ProfileManagerWindowController: NSWindowController, NSWindowDelegate
         sidebarTitle.font = .boldSystemFont(ofSize: 13)
         addButton.target = self
         addButton.action = #selector(startCreate(_:))
-        addButton.toolTip = "Add VPS Profile (⌘N)"
-        addButton.setAccessibilityLabel("Add VPS Profile")
-        addButton.setAccessibilityHelp("Create a new VPS image upload destination profile")
+        addButton.toolTip = "Add SSH Profile (⌘N)"
+        addButton.setAccessibilityLabel("Add SSH Profile")
+        addButton.setAccessibilityHelp("Create a new SSH image upload destination profile")
         let header = NSStackView(views: [sidebarTitle, spacer(), addButton])
         header.orientation = .horizontal
         sidebar.addArrangedSubview(header)
@@ -372,7 +372,7 @@ final class ProfileManagerWindowController: NSWindowController, NSWindowDelegate
         shotMode.isEnabled = !readOnly
         openEditorButton.isHidden = !readOnly
         if draft.isNew {
-            activeLabel.stringValue = "New VPS Profile"
+            activeLabel.stringValue = "New SSH Profile"
             badgeLabel.stringValue = ""
         } else {
             activeLabel.stringValue = (currentDetails?.active == true ? "✓ Active Destination" : "Profile")

@@ -12,8 +12,8 @@ test:
 
 lint:
 	@command -v shellcheck >/dev/null || { echo "shellcheck is required: brew install shellcheck" >&2; exit 1; }
-	/bin/bash -n bin/vps-img-paste build.sh install.sh uninstall.sh scripts/*.sh tests/*.sh
-	shellcheck -S error bin/vps-img-paste build.sh install.sh uninstall.sh scripts/*.sh tests/*.sh
+	/bin/bash -n bin/ssh-img-paste bin/vps-img-paste build.sh install.sh uninstall.sh scripts/*.sh tests/*.sh
+	shellcheck -S error bin/ssh-img-paste bin/vps-img-paste build.sh install.sh uninstall.sh scripts/*.sh tests/*.sh
 
 icon:
 	./scripts/generate-app-icon.sh

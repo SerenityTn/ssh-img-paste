@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-TMP="$(mktemp -d -t vps-img-paste-uninstall-tests)"
+TMP="$(mktemp -d -t ssh-img-paste-uninstall-tests)"
 trap 'rm -rf "$TMP"' EXIT
 
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
@@ -14,14 +14,18 @@ export HOME="$TMP/home"
 export XDG_CONFIG_HOME="$HOME/.config"
 export PATH="$TMP/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 export TEST_LOG="$TMP/invocations.log"
-mkdir -p "$TMP/repo/bin" "$TMP/bin" "$HOME/Applications/VpsImgPaste.app/Contents/MacOS" \
+mkdir -p "$TMP/repo/bin" "$TMP/bin" "$HOME/Applications/SSHImagePaste.app/Contents/MacOS" \
+  "$HOME/Applications/VpsImgPaste.app/Contents/MacOS" \
   "$HOME/Library/LaunchAgents" "$HOME/bin" "$XDG_CONFIG_HOME/vps-img-paste/profiles" \
   "$TMP/Applications"
 cp "$ROOT/uninstall.sh" "$TMP/repo/uninstall.sh"
+printf '#!/usr/bin/env bash\n' > "$TMP/repo/bin/ssh-img-paste"
 printf '#!/usr/bin/env bash\n' > "$TMP/repo/bin/vps-img-paste"
-chmod +x "$TMP/repo/uninstall.sh" "$TMP/repo/bin/vps-img-paste"
+chmod +x "$TMP/repo/uninstall.sh" "$TMP/repo/bin/ssh-img-paste" "$TMP/repo/bin/vps-img-paste"
+printf app > "$HOME/Applications/SSHImagePaste.app/Contents/MacOS/SSHImagePaste"
 printf app > "$HOME/Applications/VpsImgPaste.app/Contents/MacOS/VpsImgPaste"
 printf plist > "$HOME/Library/LaunchAgents/com.khaireddine.vpsimgpaste.plist"
+ln -s "$TMP/repo/bin/ssh-img-paste" "$HOME/bin/ssh-img-paste"
 ln -s "$TMP/repo/bin/vps-img-paste" "$HOME/bin/vps-img-paste"
 ln -s "$HOME/Applications/VpsImgPaste.app" "$TMP/Applications/VpsImgPaste.app"
 printf profile > "$XDG_CONFIG_HOME/vps-img-paste/profiles/default.env"
@@ -51,11 +55,14 @@ chmod +x "$TMP/bin/launchctl" "$TMP/bin/pgrep"
   ./uninstall.sh
 ) > "$TMP/uninstall.out"
 
+assert_not_exists "$HOME/Applications/SSHImagePaste.app"
 assert_not_exists "$HOME/Applications/VpsImgPaste.app"
 assert_not_exists "$HOME/Library/LaunchAgents/com.khaireddine.vpsimgpaste.plist"
+assert_not_exists "$HOME/bin/ssh-img-paste"
 assert_not_exists "$HOME/bin/vps-img-paste"
 assert_exists "$XDG_CONFIG_HOME/vps-img-paste/profiles/default.env"
 assert_exists "$XDG_CONFIG_HOME/vps-img-paste/active-profile"
+assert_contains "$(cat "$TEST_LOG")" "$(printf 'pgrep\t-f\t^%s$' "$HOME/Applications/SSHImagePaste.app/Contents/MacOS/SSHImagePaste")"
 assert_contains "$(cat "$TEST_LOG")" "$(printf 'pgrep\t-f\t^%s$' "$HOME/Applications/VpsImgPaste.app/Contents/MacOS/VpsImgPaste")"
 
 # Never remove a CLI symlink owned by another installation.

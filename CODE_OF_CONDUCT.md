@@ -2,7 +2,7 @@
 
 ## Our standard
 
-We want participation in VPS Image Paste to be safe, respectful, and useful. Be considerate, discuss the work rather than the person, accept constructive feedback, and make room for people with different experience levels and backgrounds.
+We want participation in SSH Image Paste to be safe, respectful, and useful. Be considerate, discuss the work rather than the person, accept constructive feedback, and make room for people with different experience levels and backgrounds.
 
 Unacceptable behavior includes harassment, threats, discriminatory language, sexualized attention, deliberate intimidation, publishing another person's private information, or sustained disruption of project discussions.
 

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-TMP="$(mktemp -d -t vps-img-paste-tests)"
+TMP="$(mktemp -d -t ssh-img-paste-tests)"
 trap 'rm -rf "$TMP"' EXIT
 
 export HOME="$TMP/home"
@@ -37,7 +37,9 @@ assert_file_eq() {
   [ "$got" = "$2" ] || fail "expected $1 content [$got] to equal [$2]"
 }
 reset_state() {
-  rm -rf "$HOME/.config/vps-img-paste" "$HOME/.config/vps-img-paste.env" "$TEST_LOG" "$PBCOPY_LOG" "$OSASCRIPT_LOG" "$OSASCRIPT_SOURCE_LOG" "$OSASCRIPT_MARKER"
+  rm -rf "$HOME/.config/ssh-img-paste" "$HOME/.config/ssh-img-paste.env" \
+    "$HOME/.config/vps-img-paste" "$HOME/.config/vps-img-paste.env" \
+    "$TEST_LOG" "$PBCOPY_LOG" "$OSASCRIPT_LOG" "$OSASCRIPT_SOURCE_LOG" "$OSASCRIPT_MARKER"
   mkdir -p "$HOME/.config"
   : > "$TEST_LOG"
   : > "$PBCOPY_LOG"
@@ -165,12 +167,12 @@ EOF
 chmod +x "$TMP/bin/screencapture"
 
 run_ok() {
-  "$ROOT/bin/vps-img-paste" "$@"
+  "$ROOT/bin/ssh-img-paste" "$@"
 }
 run_fail() {
   local out status
   set +e
-  out="$("$ROOT/bin/vps-img-paste" "$@" 2>&1)"
+  out="$("$ROOT/bin/ssh-img-paste" "$@" 2>&1)"
   status=$?
   set -e
   [ "$status" -ne 0 ] || fail "expected command to fail: $*"
@@ -186,6 +188,25 @@ assert_contains "$(cat "$TEST_LOG")" "legacy-host"
 assert_contains "$(cat "$TEST_LOG")" "legacy-images"
 assert_eq "$(run_ok profile current)" "default"
 pass "legacy default profile"
+
+# The 1.x command remains an exact compatibility entry point.
+assert_eq "$("$ROOT/bin/vps-img-paste" profile current)" "default"
+pass "legacy command compatibility"
+
+# Fresh SSH Image Paste configuration uses the canonical path.
+reset_state
+mkdir -p "$XDG_CONFIG_HOME/ssh-img-paste/profiles"
+cat > "$XDG_CONFIG_HOME/ssh-img-paste/profiles/main.env" <<'EOF'
+VPS_PROFILE_LABEL="Canonical"
+VPS_HOST="canonical-host"
+VPS_REMOTE_HOME="/srv/canonical"
+VPS_REMOTE_DIR="images"
+EOF
+printf 'main\n' > "$XDG_CONFIG_HOME/ssh-img-paste/active-profile"
+assert_eq "$(run_ok profile current)" "main"
+output="$(run_ok profiles)"
+assert_contains "$output" $'*\tmain\tCanonical\tcanonical-host'
+pass "canonical SSH Image Paste config path"
 
 # Env-only legacy compatibility works without a config file and stays isolated.
 unset VPS_PROFILE_LABEL VPS_HOST VPS_REMOTE_HOME VPS_REMOTE_DIR VPS_CLIP_RESTORE_SECONDS
@@ -233,7 +254,7 @@ output="$(run_fail --profile ../escape list)"
 assert_contains "$output" "Invalid profile"
 assert_eq "$(cat "$TEST_LOG")" ""
 output="$(run_fail --profile missing list)"
-assert_contains "$output" "VPS profile not found: missing"
+assert_contains "$output" "SSH profile not found: missing"
 assert_eq "$(cat "$TEST_LOG")" ""
 printf '../escape\n' > "$XDG_CONFIG_HOME/vps-img-paste/active-profile"
 output="$(run_fail list)"
@@ -254,10 +275,10 @@ assert_contains "$output" "Invalid profile"
 assert_eq "$(cat "$TEST_LOG")" ""
 printf 'missing\n' > "$XDG_CONFIG_HOME/vps-img-paste/active-profile"
 output="$(run_fail profile current)"
-assert_contains "$output" "VPS profile not found: missing"
+assert_contains "$output" "SSH profile not found: missing"
 assert_eq "$(cat "$TEST_LOG")" ""
 output="$(run_fail profiles)"
-assert_contains "$output" "VPS profile not found: missing"
+assert_contains "$output" "SSH profile not found: missing"
 assert_eq "$(cat "$TEST_LOG")" ""
 pass "metadata validates malformed and missing active state"
 
@@ -334,7 +355,7 @@ assert_contains "$output" "Invalid profile"
 assert_file_eq "$XDG_CONFIG_HOME/vps-img-paste/active-profile" "dev"
 assert_eq "$(cat "$TEST_LOG")" ""
 output="$(run_fail profile use missing)"
-assert_contains "$output" "VPS profile not found: missing"
+assert_contains "$output" "SSH profile not found: missing"
 assert_file_eq "$XDG_CONFIG_HOME/vps-img-paste/active-profile" "dev"
 assert_eq "$(cat "$TEST_LOG")" ""
 pass "profile current and use"

@@ -1,18 +1,18 @@
 # Command-line reference
 
-`vps-img-paste` uses the active profile unless `--profile ID` is provided. An explicit override applies to one command and does not change the active profile.
+`ssh-img-paste` uses the active profile unless `--profile ID` is provided. An explicit override applies to one command and does not change the active profile. The former `vps-img-paste` command remains a compatibility entry point with identical behavior.
 
 ## Upload and remote files
 
 ```sh
-vps-img-paste
-vps-img-paste upload
-vps-img-paste --profile work upload
-vps-img-paste region
-vps-img-paste full
-vps-img-paste list
-vps-img-paste fetch NAME.png
-vps-img-paste clean
+ssh-img-paste
+ssh-img-paste upload
+ssh-img-paste --profile work upload
+ssh-img-paste region
+ssh-img-paste full
+ssh-img-paste list
+ssh-img-paste fetch NAME.png
+ssh-img-paste clean
 ```
 
 - `upload` sends a clipboard image, or uses the configured screenshot fallback when the clipboard has no image.
@@ -24,11 +24,11 @@ vps-img-paste clean
 ## Profile discovery and selection
 
 ```sh
-vps-img-paste profiles
-vps-img-paste profile current
-vps-img-paste profile use work
-vps-img-paste profile inspect work
-vps-img-paste profile test work
+ssh-img-paste profiles
+ssh-img-paste profile current
+ssh-img-paste profile use work
+ssh-img-paste profile inspect work
+ssh-img-paste profile test work
 ```
 
 `profiles` emits exactly four tab-separated columns: active marker, profile ID, display label, and SSH host. `profile inspect` emits stable `KEY<TAB>VALUE` rows. `profile test` is read-only and uses SSH batch mode.
@@ -36,20 +36,20 @@ vps-img-paste profile test work
 ## Profile management
 
 ```sh
-vps-img-paste profile create work \
-  --label "Work VPS" \
-  --host work-vps \
+ssh-img-paste profile create work \
+  --label "Work SSH Host" \
+  --host work-ssh \
   --remote-home /home/me \
   --remote-dir img-uploads
 
-vps-img-paste profile update work \
+ssh-img-paste profile update work \
   --label "Work Server" \
   --shot-mode full \
   --restore-seconds 30
 
-vps-img-paste profile rename work client-a
-vps-img-paste profile delete old-client
-vps-img-paste profile delete client-a --switch-to fallback
+ssh-img-paste profile rename work client-a
+ssh-img-paste profile delete old-client
+ssh-img-paste profile delete client-a --switch-to fallback
 ```
 
 Creating the first usable profile makes it active. Deleting an inactive profile does not require a replacement. Deleting the active profile requires `--switch-to ID`, and deleting the last usable profile is blocked.

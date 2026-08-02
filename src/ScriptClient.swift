@@ -24,24 +24,33 @@ final class ScriptClient {
     func scriptPath() -> String {
         if let override = executableOverride, !override.isEmpty { return override }
         let home = fileManager.homeDirectoryForCurrentUser.path
-        let sourceInstall = "\(home)/bin/vps-img-paste"
+        let sourceInstalls = [
+            "\(home)/bin/ssh-img-paste",
+            "\(home)/bin/vps-img-paste",
+        ]
         let homebrewInstalls = [
+            "/opt/homebrew/bin/ssh-img-paste",
+            "/usr/local/bin/ssh-img-paste",
             "/opt/homebrew/bin/vps-img-paste",
             "/usr/local/bin/vps-img-paste",
         ]
         let homeApplications = "\(home)/Applications/"
         let bundledInHome = Bundle.main.bundleURL.standardizedFileURL.path.hasPrefix(homeApplications)
-        let detectedInstalls = bundledInHome ? [sourceInstall] + homebrewInstalls : homebrewInstalls + [sourceInstall]
-        let candidates = [ProcessInfo.processInfo.environment["VPS_IMG_PASTE_BIN"]].compactMap { $0 } + detectedInstalls
+        let detectedInstalls = bundledInHome ? sourceInstalls + homebrewInstalls : homebrewInstalls + sourceInstalls
+        let environmentInstalls = [
+            ProcessInfo.processInfo.environment["SSH_IMG_PASTE_BIN"],
+            ProcessInfo.processInfo.environment["VPS_IMG_PASTE_BIN"],
+        ].compactMap { $0 }
+        let candidates = environmentInstalls + detectedInstalls
         for candidate in candidates where fileManager.isExecutableFile(atPath: candidate) { return candidate }
-        return candidates.last ?? sourceInstall
+        return sourceInstalls[0]
     }
 
     func runSync(_ arguments: [String], timeout: TimeInterval = ScriptClient.defaultTimeout) -> ScriptResult {
         let task = Process()
         task.executableURL = URL(fileURLWithPath: scriptPath())
         task.arguments = arguments
-        let tempRoot = fileManager.temporaryDirectory.appendingPathComponent("vps-img-paste-script-\(UUID().uuidString)", isDirectory: true)
+        let tempRoot = fileManager.temporaryDirectory.appendingPathComponent("ssh-img-paste-script-\(UUID().uuidString)", isDirectory: true)
         let outURL = tempRoot.appendingPathComponent("stdout")
         let errURL = tempRoot.appendingPathComponent("stderr")
         do {
@@ -69,7 +78,7 @@ final class ScriptClient {
         } catch {
             try? out.close()
             try? err.close()
-            return ScriptResult(stdout: "", stderr: "Could not start vps-img-paste: \(error.localizedDescription)", status: 127)
+            return ScriptResult(stdout: "", stderr: "Could not start ssh-img-paste: \(error.localizedDescription)", status: 127)
         }
         let childPID = task.processIdentifier
         let timedOut = !waitForTaskExit(exitGroup, timeout: timeout)

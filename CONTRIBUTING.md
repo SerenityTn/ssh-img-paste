@@ -1,6 +1,6 @@
-# Contributing to VPS Image Paste
+# Contributing to SSH Image Paste
 
-Thanks for helping improve VPS Image Paste. Small, focused changes are easiest to review and safest for a utility that handles screenshots, clipboard contents, local configuration, and remote deletion.
+Thanks for helping improve SSH Image Paste. Small, focused changes are easiest to review and safest for a utility that handles screenshots, clipboard contents, local configuration, and remote deletion.
 
 ## Before you start
 
@@ -16,8 +16,8 @@ You need macOS 13 or newer and the Xcode Command Line Tools:
 ```sh
 xcode-select --install
 brew install shellcheck pngpaste
-git clone https://github.com/SerenityTn/vps-img-paste.git
-cd vps-img-paste
+git clone https://github.com/SerenityTn/ssh-img-paste.git
+cd ssh-img-paste
 make check
 ```
 
@@ -39,7 +39,7 @@ This replaces the source-installed app in `~/Applications` and reloads its Launc
 
 ## Architecture and security boundaries
 
-- `bin/vps-img-paste` owns profile parsing, validation, persistence, active-profile resolution, and remote operations.
+- `bin/ssh-img-paste` owns profile parsing, validation, persistence, active-profile resolution, and remote operations. `bin/vps-img-paste` is the compatibility entry point.
 - The AppKit code calls the CLI with argument arrays. It must not build shell command strings from user input.
 - Profile files are parsed as literal data. Do not reintroduce `source`, `eval`, or executable config semantics.
 - SSH credentials and transport options stay in OpenSSH configuration, the keychain, and the SSH agent. The app stores only a destination host or alias and remote paths.

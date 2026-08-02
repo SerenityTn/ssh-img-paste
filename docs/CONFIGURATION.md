@@ -7,8 +7,8 @@ The native profile manager is the recommended way to add and edit destinations. 
 Named profiles use:
 
 ```text
-~/.config/vps-img-paste/profiles/<id>.env
-~/.config/vps-img-paste/active-profile
+~/.config/ssh-img-paste/profiles/<id>.env
+~/.config/ssh-img-paste/active-profile
 ```
 
 `XDG_CONFIG_HOME` replaces `~/.config` when set. Profile files are private (`0600`), and the profile directory is private (`0700`).
@@ -18,8 +18,8 @@ A profile ID must match `[A-Za-z0-9][A-Za-z0-9_-]*`. The ID is the filename and 
 ## Supported fields
 
 ```sh
-VPS_PROFILE_LABEL="Work VPS"
-VPS_HOST="work-vps"
+VPS_PROFILE_LABEL="Work SSH Host"
+VPS_HOST="work-ssh"
 VPS_REMOTE_HOME="/home/me"
 VPS_REMOTE_DIR="img-uploads"
 VPS_SHOT_MODE="region"
@@ -42,7 +42,7 @@ Upload, list, fetch, and cleanup all use the same validated absolute root: `VPS_
 Keep SSH authentication and transport settings outside profile files:
 
 ```sshconfig
-Host work-vps
+Host work-ssh
   HostName 203.0.113.10
   User me
   Port 2222
@@ -50,12 +50,12 @@ Host work-vps
   ProxyJump bastion
 ```
 
-Then use `VPS_HOST="work-vps"`. OpenSSH, the macOS keychain, and your SSH agent remain responsible for keys and passphrases. VPS Image Paste does not store passwords or private keys.
+Then use `VPS_HOST="work-ssh"`. OpenSSH, the macOS keychain, and your SSH agent remain responsible for keys and passphrases. SSH Image Paste does not store passwords or private keys.
 
 Create the upload directory once:
 
 ```sh
-ssh work-vps 'mkdir -p ~/img-uploads'
+ssh work-ssh 'mkdir -p ~/img-uploads'
 ```
 
 If `VPS_REMOTE_HOME` is not the login account's real home, create and authorize the configured absolute directory instead.
@@ -67,15 +67,15 @@ Profile files are parsed as data, not executed as shell scripts. Supported field
 Accepted:
 
 ```sh
-VPS_HOST="work-vps"
+VPS_HOST="work-ssh"
 VPS_REMOTE_HOME=/home/me
 ```
 
 Rejected for supported fields:
 
 ```sh
-VPS_HOST="${USER}@work-vps"
-VPS_REMOTE_HOME="$(ssh work-vps pwd)"
+VPS_HOST="${USER}@work-ssh"
+VPS_REMOTE_HOME="$(ssh work-ssh pwd)"
 ```
 
 Backticks, command substitution, variable expansion, functions, `source`, and `eval` are not evaluated. A legacy file with literal supported values plus extra unsupported statements remains usable but appears as **Manual** and read-only in the GUI. Replace dynamic supported values with resolved literals before editing that profile in the app.
@@ -83,20 +83,24 @@ Backticks, command substitution, variable expansion, functions, `source`, and `e
 Verify a migrated profile without uploading:
 
 ```sh
-vps-img-paste profile inspect work
-vps-img-paste profile test work
+ssh-img-paste profile inspect work
+ssh-img-paste profile test work
 ```
 
 `profile test` uses noninteractive SSH batch mode.
 
-## Legacy default profile
+## VPS Image Paste 1.x compatibility
 
-The original single-file config remains supported as profile `default`:
+Fresh installations use the SSH Image Paste paths above. Existing named profiles and the original single-file config remain supported in place:
 
 ```text
 ~/.config/vps-img-paste.env
+~/.config/vps-img-paste/profiles/<id>.env
+~/.config/vps-img-paste/active-profile
 ```
 
-When it exists, it takes precedence over `profiles/default.env`. The manager marks a shadowed named default profile accordingly. Add named profiles with other IDs before removing the legacy file. The installer never moves or deletes existing configuration.
+The CLI selects the new path when it exists; otherwise it automatically uses the corresponding 1.x path. The original single-file config is exposed as profile `default` and takes precedence over `profiles/default.env`. The manager marks a shadowed named default profile accordingly. The installer never moves or deletes existing configuration.
 
-Deleting a local profile never deletes remote uploads. Remote files are removed only through the explicit **Clean All Uploads** action or `vps-img-paste clean`.
+The `VPS_*` profile keys, `VPS_IMG_PASTE_*` overrides, `vps-img-paste` command, bundle identifier, and LaunchAgent label remain supported for compatible upgrades. New integrations should invoke `ssh-img-paste` and use `SSH_IMG_PASTE_*` path/executable overrides where available.
+
+Deleting a local profile never deletes remote uploads. Remote files are removed only through the explicit **Clean All Uploads** action or `ssh-img-paste clean`.

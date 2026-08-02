@@ -20,8 +20,8 @@ private struct CaptureRequest {
 }
 
 // Menu-bar app. Left-click uploads the clipboard image (or a screenshot) via
-// `~/bin/vps-img-paste`; right-click (or Option-click) opens a menu to choose
-// the active VPS destination, browse, and clean images uploaded there.
+// `~/bin/ssh-img-paste`; right-click (or Option-click) opens a menu to choose
+// the active SSH destination, browse, and clean images uploaded there.
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
     private let scriptClient = ScriptClient()
@@ -37,8 +37,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             button.action = #selector(handleClick(_:))
             button.target = self
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
-            button.toolTip = "VPS Image Paste — click to upload the clipboard image"
-            button.setAccessibilityLabel("VPS Image Paste")
+            button.toolTip = "SSH Image Paste — click to upload the clipboard image"
+            button.setAccessibilityLabel("SSH Image Paste")
             button.setAccessibilityHelp("Upload the clipboard image, or open destination options with a secondary click")
         }
     }
@@ -63,10 +63,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let destination = NSMenuItem(title: "Destination: \(destinationName)", action: nil, keyEquivalent: "")
         let destinationSubmenu = NSMenu()
         if !profilesOK {
-            destinationSubmenu.addItem(disabled("Could not load VPS profiles"))
+            destinationSubmenu.addItem(disabled("Could not load SSH profiles"))
         } else if profiles.isEmpty {
-            destinationSubmenu.addItem(disabled("No VPS profiles configured"))
-            let add = NSMenuItem(title: "Add VPS Profile…", action: #selector(addProfile(_:)), keyEquivalent: "")
+            destinationSubmenu.addItem(disabled("No SSH profiles configured"))
+            let add = NSMenuItem(title: "Add SSH Profile…", action: #selector(addProfile(_:)), keyEquivalent: "")
             add.target = self
             destinationSubmenu.addItem(add)
         } else {
@@ -173,14 +173,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         menu.addItem(.separator())
-        let project = NSMenuItem(title: "VPS Image Paste on GitHub…", action: #selector(openProjectPage(_:)), keyEquivalent: "")
+        let project = NSMenuItem(title: "SSH Image Paste on GitHub…", action: #selector(openProjectPage(_:)), keyEquivalent: "")
         project.target = self
         menu.addItem(project)
-        let about = NSMenuItem(title: "About VPS Image Paste", action: #selector(showAbout(_:)), keyEquivalent: "")
+        let about = NSMenuItem(title: "About SSH Image Paste", action: #selector(showAbout(_:)), keyEquivalent: "")
         about.target = self
         menu.addItem(about)
         menu.addItem(.separator())
-        let quit = NSMenuItem(title: "Quit VPS Image Paste", action: #selector(quit), keyEquivalent: "q")
+        let quit = NSMenuItem(title: "Quit SSH Image Paste", action: #selector(quit), keyEquivalent: "q")
         quit.target = self
         menu.addItem(quit)
 
@@ -296,7 +296,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func quit() { NSApp.terminate(nil) }
 
     @objc private func openProjectPage(_ sender: Any?) {
-        guard let url = URL(string: "https://github.com/SerenityTn/vps-img-paste") else { return }
+        guard let url = URL(string: "https://github.com/SerenityTn/ssh-img-paste") else { return }
         NSWorkspace.shared.open(url)
     }
 
@@ -374,7 +374,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Helpers
 
     private func symbol(_ name: String) -> NSImage? {
-        let img = NSImage(systemSymbolName: name, accessibilityDescription: "VPS Image Paste")
+        let img = NSImage(systemSymbolName: name, accessibilityDescription: "SSH Image Paste")
         img?.isTemplate = true
         return img
     }
@@ -415,7 +415,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 }
 
 @main
-struct VpsImgPasteApp {
+struct SSHImagePasteApp {
     static func main() {
         let app = NSApplication.shared
         let delegate = AppDelegate()

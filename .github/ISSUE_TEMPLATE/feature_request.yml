@@ -26,7 +26,7 @@ body:
     attributes:
       label: Project boundaries
       options:
-        - label: This keeps SSH credentials outside VPS Image Paste profiles.
+        - label: This keeps SSH credentials outside SSH Image Paste profiles.
           required: true
         - label: This does not require profile files to execute shell code.
           required: true

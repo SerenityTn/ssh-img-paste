@@ -2,7 +2,7 @@
 
 ## Reporting a vulnerability
 
-Please report security problems privately through [GitHub Security Advisories](https://github.com/SerenityTn/vps-img-paste/security/advisories/new). Do not include exploit details, credentials, private hostnames, or private keys in a public issue.
+Please report security problems privately through [GitHub Security Advisories](https://github.com/SerenityTn/ssh-img-paste/security/advisories/new). Do not include exploit details, credentials, private hostnames, or private keys in a public issue.
 
 Include the affected version, installation method, macOS version, reproduction steps, impact, and any suggested mitigation. Maintainers will acknowledge reports as time permits and coordinate disclosure after a fix is available.
 
@@ -12,12 +12,12 @@ Security fixes target the latest tagged release and `main`. Older Homebrew insta
 
 ```sh
 brew update
-brew upgrade vps-img-paste
+brew upgrade ssh-img-paste
 ```
 
 ## Security model
 
-VPS Image Paste is a local macOS utility that sends PNG files to a host you configure over OpenSSH.
+SSH Image Paste is a local macOS utility that sends PNG files to a host you configure over OpenSSH.
 
 - Profile files store destination labels, an SSH host or alias, and remote paths. They do not store passwords or private keys.
 - SSH authentication and transport settings remain with OpenSSH, the macOS keychain, and the SSH agent.

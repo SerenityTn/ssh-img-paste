@@ -2,11 +2,11 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-TMP="$(mktemp -d -t vps-img-paste-signature-tests)"
+TMP="$(mktemp -d -t ssh-img-paste-signature-tests)"
 trap 'rm -rf "$TMP"' EXIT
 
 APP_DIR="$TMP/Applications" "$ROOT/build.sh" >/dev/null
-APP="$TMP/Applications/VpsImgPaste.app"
+APP="$TMP/Applications/SSHImagePaste.app"
 
 codesign --verify --strict "$APP"
 requirement="$(codesign -d --requirements - "$APP" 2>&1)"
@@ -26,6 +26,17 @@ actual_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString'
 }
 [ -s "$APP/Contents/Resources/AppIcon.icns" ] || {
   printf 'FAIL: app icon is missing from the bundle\n' >&2
+  exit 1
+}
+
+display_name="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleDisplayName' "$APP/Contents/Info.plist")"
+executable="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$APP/Contents/Info.plist")"
+[ "$display_name" = "SSH Image Paste" ] || {
+  printf 'FAIL: expected SSH Image Paste display name, got %s\n' "$display_name" >&2
+  exit 1
+}
+[ "$executable" = "SSHImagePaste" ] && [ -x "$APP/Contents/MacOS/SSHImagePaste" ] || {
+  printf 'FAIL: renamed SSHImagePaste executable is missing\n' >&2
   exit 1
 }
 

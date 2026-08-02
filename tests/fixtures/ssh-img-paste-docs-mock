@@ -3,19 +3,19 @@ set -euo pipefail
 
 case "${1:-}" in
   profiles)
-    printf '*\tdemo\tDemo VPS\tdemo-vps\n'
-    printf '\tstaging\tStaging\tstaging-vps\n'
+    printf '*\tdemo\tDemo SSH Host\tdemo-ssh\n'
+    printf '\tstaging\tStaging\tstaging-ssh\n'
     ;;
   profile)
     [ "${2:-}" = inspect ] || exit 64
     id="${3:-demo}"
     if [ "$id" = demo ]; then
-      label="Demo VPS"
-      host="demo-vps"
+      label="Demo SSH Host"
+      host="demo-ssh"
       active=true
     else
       label="Staging"
-      host="staging-vps"
+      host="staging-ssh"
       active=false
     fi
     printf 'id\t%s\n' "$id"
@@ -26,7 +26,7 @@ case "${1:-}" in
     printf 'shot_mode\tregion\n'
     printf 'restore_seconds\t60\n'
     printf 'kind\tapp\n'
-    printf 'path\t~/.config/vps-img-paste/profiles/%s.env\n' "$id"
+    printf 'path\t~/.config/ssh-img-paste/profiles/%s.env\n' "$id"
     printf 'editable\ttrue\n'
     printf 'active\t%s\n' "$active"
     ;;

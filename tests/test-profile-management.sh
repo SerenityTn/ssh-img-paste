@@ -7,6 +7,7 @@ trap 'rm -rf "$TMP"' EXIT
 
 export HOME="$TMP/home"
 export XDG_CONFIG_HOME="$HOME/.config"
+export VPS_IMG_PASTE_CONFIG_DIR="$XDG_CONFIG_HOME/vps-img-paste"
 export PATH="$TMP/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 export TEST_LOG="$TMP/invocations.log"
 mkdir -p "$HOME/.config" "$TMP/bin"

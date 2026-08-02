@@ -2,10 +2,10 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-TMP="$(mktemp -d -t vps-img-paste-check)"
+TMP="$(mktemp -d -t ssh-img-paste-check)"
 trap 'rm -rf "$TMP"' EXIT
 
-"$ROOT/tests/test-vps-img-paste.sh"
+"$ROOT/tests/test-ssh-img-paste.sh"
 "$ROOT/tests/test-profile-management.sh"
 "$ROOT/tests/test-install.sh"
 "$ROOT/tests/test-uninstall.sh"

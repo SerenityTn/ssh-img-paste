@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SOURCE="$ROOT/assets/AppIcon.svg"
 OUTPUT="$ROOT/assets/AppIcon.icns"
-TMP="$(mktemp -d -t vps-img-paste-icon)"
+TMP="$(mktemp -d -t ssh-img-paste-icon)"
 trap 'rm -rf "$TMP"' EXIT
 ICONSET="$TMP/AppIcon.iconset"
 MASTER="$TMP/AppIcon.png"

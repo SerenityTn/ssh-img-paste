@@ -3,9 +3,9 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 OUTPUT="${1:-$ROOT/docs/images/profile-manager.png}"
-TMP="$(mktemp -d -t vps-img-paste-screenshot)"
+TMP="$(mktemp -d -t ssh-img-paste-screenshot)"
 trap 'rm -rf "$TMP"' EXIT
-MOCK="$ROOT/tests/fixtures/vps-img-paste-docs-mock"
+MOCK="$ROOT/tests/fixtures/ssh-img-paste-docs-mock"
 
 swiftc -target "$(uname -m)-apple-macos13.0" \
   "$ROOT/src/ProfileModels.swift" \
