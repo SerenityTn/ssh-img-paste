@@ -55,7 +55,13 @@ MOCK
 chmod +x "$TMP/bin/lsregister"
 
 # Never inspect or terminate real desktop processes from the isolated test.
-printf '#!/usr/bin/env bash\nexit 1\n' > "$TMP/bin/pgrep"
+cat > "$TMP/bin/pgrep" <<'MOCK'
+#!/usr/bin/env bash
+printf 'pgrep' >> "$TEST_LOG"
+for arg in "$@"; do printf '\t%s' "$arg" >> "$TEST_LOG"; done
+printf '\n' >> "$TEST_LOG"
+exit 1
+MOCK
 chmod +x "$TMP/bin/pgrep"
 
 cat > "$TMP/bin/brew" <<'MOCK'
@@ -82,6 +88,7 @@ assert_contains "$(cat "$plist")" "$HOME/Applications/VpsImgPaste.app/Contents/M
 assert_contains "$(cat "$plist")" "$HOME/bin/vps-img-paste"
 assert_contains "$(cat "$TEST_LOG")" "build"
 assert_contains "$(cat "$TEST_LOG")" $'launchctl\tload\t-w\t'
+assert_contains "$(cat "$TEST_LOG")" "$(printf 'pgrep\t-f\t^%s$' "$HOME/Applications/VpsImgPaste.app/Contents/MacOS/VpsImgPaste")"
 assert_contains "$(readlink "$VPS_IMG_PASTE_GLOBAL_APPLICATIONS_DIR/VpsImgPaste.app")" "$HOME/Applications/VpsImgPaste.app"
 assert_contains "$(cat "$TEST_LOG")" $'lsregister\t-f\t'
 if grep -q '^brew' "$TEST_LOG"; then

@@ -101,5 +101,16 @@ cat > "$PL" <<PLIST
 </plist>
 PLIST
 launchctl unload "$PL" 2>/dev/null || true
+
+# A manually opened copy is not owned by the LaunchAgent and survives unload.
+# Stop every process using this exact source-installed executable before loading
+# the single login instance, otherwise two menu-bar icons can remain visible.
+current_pids="$(pgrep -f "^$BIN$" 2>/dev/null || true)"
+if [ -n "$current_pids" ]; then
+  for pid in $current_pids; do
+    kill "$pid" 2>/dev/null || true
+  done
+fi
+
 launchctl load -w "$PL"
 echo "✓ Menu-bar app installed and running (auto-starts at login)."

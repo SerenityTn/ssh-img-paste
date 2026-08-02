@@ -34,6 +34,7 @@ final class ProfileManagerWindowController: NSWindowController, NSWindowDelegate
     private var loadGeneration = 0
     private var suppressSelectionChange = false
     private var detailsCache: [String: ProfileDetails] = [:]
+    private var loadState = ProfileManagerLoadState()
 
     private let tableView = NSTableView()
     private let scrollView = NSScrollView()
@@ -78,7 +79,9 @@ final class ProfileManagerWindowController: NSWindowController, NSWindowDelegate
         showWindow(nil)
         window?.center()
         NSApp.activate(ignoringOtherApps: true)
-        if addMode || profiles.isEmpty { startCreate(nil) }
+        if loadState.shouldStartCreateOnShow(addMode: addMode, isLoading: isLoading, profilesEmpty: profiles.isEmpty) {
+            startCreate(nil)
+        }
     }
 
     // MARK: UI
@@ -99,6 +102,8 @@ final class ProfileManagerWindowController: NSWindowController, NSWindowDelegate
 
         let sidebar = NSStackView()
         sidebar.orientation = .vertical
+        sidebar.alignment = .width
+        sidebar.distribution = .fill
         sidebar.spacing = 8
         sidebar.edgeInsets = NSEdgeInsets(top: 12, left: 12, bottom: 12, right: 12)
         sidebar.widthAnchor.constraint(equalToConstant: 250).isActive = true
@@ -128,6 +133,8 @@ final class ProfileManagerWindowController: NSWindowController, NSWindowDelegate
 
         let detail = NSStackView()
         detail.orientation = .vertical
+        detail.alignment = .width
+        detail.distribution = .fill
         detail.spacing = 10
         detail.edgeInsets = NSEdgeInsets(top: 16, left: 18, bottom: 14, right: 18)
 
@@ -139,17 +146,22 @@ final class ProfileManagerWindowController: NSWindowController, NSWindowDelegate
 
         detail.addArrangedSubview(formRow("Profile ID", idField, help: "Required when creating. Immutable during normal edits; use Rename for existing profiles."))
         detail.addArrangedSubview(formRow("Display name", labelField))
-        detail.addArrangedSubview(formRow("SSH host or alias", hostField, help: "Use ~/.ssh/config for ports, identity files, jump hosts, and passwords/passphrases. The app only stores the host/alias."))
+        detail.addArrangedSubview(formRow("SSH host or alias", hostField, help: "Use ~/.ssh/config for the SSH user, port, identity file, and jump hosts. Keep passwords and private keys outside profile files."))
         detail.addArrangedSubview(formRow("Remote home", homeField))
         detail.addArrangedSubview(formRow("Upload folder", dirField))
 
         shotMode.addItems(withTitles: ["region", "full"])
+        advancedButton.title = "Advanced Settings"
         advancedButton.setButtonType(.pushOnPushOff)
-        advancedButton.bezelStyle = .disclosure
+        advancedButton.isBordered = false
+        advancedButton.image = NSImage(systemSymbolName: "chevron.right", accessibilityDescription: nil)
+        advancedButton.imagePosition = .imageLeading
+        advancedButton.alignment = .left
+        advancedButton.contentTintColor = .secondaryLabelColor
         advancedButton.state = .off
         advancedButton.target = self
         advancedButton.action = #selector(toggleAdvanced(_:))
-        detail.addArrangedSubview(advancedButton)
+        detail.addArrangedSubview(formRow("", advancedButton))
         advancedStack.orientation = .vertical
         advancedStack.spacing = 10
         advancedStack.isHidden = true
@@ -159,11 +171,11 @@ final class ProfileManagerWindowController: NSWindowController, NSWindowDelegate
 
         validationLabel.textColor = .systemRed
         validationLabel.font = .systemFont(ofSize: 12)
-        detail.addArrangedSubview(validationLabel)
+        detail.addArrangedSubview(formRow("", validationLabel))
 
         statusLabel.textColor = .secondaryLabelColor
         statusLabel.font = .systemFont(ofSize: 12)
-        detail.addArrangedSubview(statusLabel)
+        detail.addArrangedSubview(formRow("", statusLabel))
 
         openEditorButton.target = self
         openEditorButton.action = #selector(openInTextEditor(_:))
@@ -273,7 +285,10 @@ final class ProfileManagerWindowController: NSWindowController, NSWindowDelegate
                 self.detailsCache = cache
                 self.tableView.reloadData()
                 self.setLoading(false, message: response.ok ? "Profiles loaded." : (response.error ?? "Could not load profiles."))
-                if let target = self.preferredSelection(explicit: id, snapshot: selectedSnapshot) {
+                if self.loadState.shouldStartCreateAfterLoad(profilesEmpty: self.profiles.isEmpty) {
+                    self.selectedID = nil
+                    self.startCreate(nil)
+                } else if let target = self.preferredSelection(explicit: id, snapshot: selectedSnapshot) {
                     self.restoreSelection(id: target)
                     self.loadProfile(target)
                 } else {
@@ -410,7 +425,10 @@ final class ProfileManagerWindowController: NSWindowController, NSWindowDelegate
     @objc private func fieldChanged(_ sender: Any?) { validateAndRefreshButtons() }
 
     @objc private func toggleAdvanced(_ sender: Any?) {
-        advancedStack.isHidden = advancedButton.state != .on
+        let expanded = advancedButton.state == .on
+        advancedStack.isHidden = !expanded
+        advancedButton.image = NSImage(systemSymbolName: expanded ? "chevron.down" : "chevron.right", accessibilityDescription: nil)
+        advancedButton.setAccessibilityValue(expanded ? "Expanded" : "Collapsed")
     }
 
     @objc private func startCreate(_ sender: Any?) {
@@ -419,7 +437,7 @@ final class ProfileManagerWindowController: NSWindowController, NSWindowDelegate
         selectedID = nil
         currentDetails = nil
         draft = VPSProfileDraft.empty()
-        originalDraft = nil
+        originalDraft = draft
         suppressSelectionChange = true
         tableView.deselectAll(nil)
         suppressSelectionChange = false

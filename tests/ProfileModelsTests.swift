@@ -127,6 +127,23 @@ func testDraftValidation() {
     expect(!draft.isValid && draft.validationErrors.contains { $0.contains("restore delay") }, "restore seconds range")
 }
 
+func testProfileManagerInitialLoadLifecycle() {
+    var normalOpen = ProfileManagerLoadState()
+    expect(!normalOpen.shouldStartCreateOnShow(addMode: false, isLoading: true, profilesEmpty: true), "normal open waits for the initial profile load")
+    expect(!normalOpen.shouldStartCreateAfterLoad(profilesEmpty: false), "normal open selects a loaded profile instead of creating a draft")
+
+    var requestedAdd = ProfileManagerLoadState()
+    expect(!requestedAdd.shouldStartCreateOnShow(addMode: true, isLoading: true, profilesEmpty: true), "add request waits for the initial profile load")
+    expect(requestedAdd.shouldStartCreateAfterLoad(profilesEmpty: false), "explicit add request survives the initial profile load")
+
+    var emptyLoad = ProfileManagerLoadState()
+    expect(!emptyLoad.shouldStartCreateOnShow(addMode: false, isLoading: true, profilesEmpty: true), "empty state is not assumed before loading finishes")
+    expect(emptyLoad.shouldStartCreateAfterLoad(profilesEmpty: true), "an actually empty profile list opens the create form")
+
+    let blank = VPSProfileDraft.empty()
+    expect(!blank.changed(from: blank), "untouched new profile form is not dirty")
+}
+
 func testArgumentConstruction() {
     let draft = VPSProfileDraft(originalID: "prod", id: "prod", label: "Prod", host: "prod-host", remoteHome: "/home/prod", remoteDir: "uploads", shotMode: "full", restoreSeconds: 5)
     expect(draft.updateArguments() == ["profile", "update", "prod", "--label", "Prod", "--host", "prod-host", "--remote-home", "/home/prod", "--remote-dir", "uploads", "--shot-mode", "full", "--restore-seconds", "5"], "update args")
@@ -206,6 +223,7 @@ struct ProfileModelsTestRunner {
         testAppDefaultIsNotLegacyByID()
         testEnvKindAndFallbacksArePreserved()
         testDraftValidation()
+        testProfileManagerInitialLoadLifecycle()
         testArgumentConstruction()
         testScriptClientHandlesLargeStdoutAndStderr()
         testScriptClientTimeoutTerminatesProcess()

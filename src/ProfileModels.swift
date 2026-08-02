@@ -1,5 +1,22 @@
 import Foundation
 
+struct ProfileManagerLoadState {
+    private var createAfterLoad = false
+
+    mutating func shouldStartCreateOnShow(addMode: Bool, isLoading: Bool, profilesEmpty: Bool) -> Bool {
+        if isLoading {
+            createAfterLoad = createAfterLoad || addMode
+            return false
+        }
+        return addMode || profilesEmpty
+    }
+
+    mutating func shouldStartCreateAfterLoad(profilesEmpty: Bool) -> Bool {
+        defer { createAfterLoad = false }
+        return createAfterLoad || profilesEmpty
+    }
+}
+
 struct VPSProfile: Equatable {
     let id: String
     let label: String
