@@ -1,7 +1,7 @@
 # Local machine config (contains your host) — never commit
-vps-img-paste.env
+ssh-img-paste.env
 *.env
-!vps-img-paste.env.example
+!ssh-img-paste.env.example
 
 # Build output
 build/

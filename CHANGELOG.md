@@ -4,7 +4,7 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-## [2.0.0] - 2026-08-02
+## [2.0.1] - 2026-08-02
 
 ### Changed
 
@@ -58,8 +58,8 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - First public release of the menu-bar app and CLI.
 - Added clipboard image upload, screenshot fallback, remote image browsing and cleanup, clipboard restoration, Homebrew packaging, and MIT licensing.
 
-[Unreleased]: https://github.com/SerenityTn/ssh-img-paste/compare/v2.0.0...HEAD
-[2.0.0]: https://github.com/SerenityTn/ssh-img-paste/compare/v1.3.0...v2.0.0
+[Unreleased]: https://github.com/SerenityTn/ssh-img-paste/compare/v2.0.1...HEAD
+[2.0.1]: https://github.com/SerenityTn/ssh-img-paste/compare/v1.3.0...v2.0.1
 [1.3.0]: https://github.com/SerenityTn/ssh-img-paste/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/SerenityTn/ssh-img-paste/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/SerenityTn/ssh-img-paste/compare/v1.0.0...v1.1.0
