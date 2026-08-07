@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-TMP="$(mktemp -d -t ssh-img-paste-profile-tests)"
+TMP="$(mktemp -d "${TMPDIR:-/tmp}/ssh-img-paste-profile-tests.XXXXXX")"
 trap 'rm -rf "$TMP"' EXIT
 
 export HOME="$TMP/home"
@@ -20,7 +20,10 @@ assert_not_contains() { case "$1" in *"$2"*) fail "expected [$1] not to contain 
 assert_eq() { [ "$1" = "$2" ] || fail "expected [$1] to equal [$2]"; }
 assert_file_mode() {
   local path="$1" expected="$2" got
-  got="$(stat -f '%OLp' "$path" 2>/dev/null || stat -c '%a' "$path")"
+  case "$(uname -s)" in
+    Darwin) got="$(stat -f '%OLp' "$path")" ;;
+    *) got="$(stat -c '%a' "$path")" ;;
+  esac
   [ "$got" = "$expected" ] || fail "expected mode $expected for $path, got $got"
 }
 assert_profile_file_exists() { [ -f "$XDG_CONFIG_HOME/ssh-img-paste/profiles/$1.env" ] || fail "expected profile file for $1"; }

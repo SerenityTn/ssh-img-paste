@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-TMP="$(mktemp -d -t ssh-img-paste-tests)"
+TMP="$(mktemp -d "${TMPDIR:-/tmp}/ssh-img-paste-tests.XXXXXX")"
 trap 'rm -rf "$TMP"' EXIT
 
 export HOME="$TMP/home"

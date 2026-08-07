@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-TMP="$(mktemp -d -t ssh-img-paste-uninstall-tests)"
+TMP="$(mktemp -d "${TMPDIR:-/tmp}/ssh-img-paste-uninstall-tests.XXXXXX")"
 trap 'rm -rf "$TMP"' EXIT
 
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
