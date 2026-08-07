@@ -9,7 +9,9 @@ on:
       - "xplat/**"
       - "rust/**"
       - "docs/CROSS_PLATFORM_ARCHITECTURE.md"
+      - "contract/**"
       - "tests/test_xplat.py"
+      - "tests/test-cross-platform-contract.sh"
       - "pyproject.toml"
       - ".github/workflows/cross-platform.yml"
 
@@ -31,6 +33,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
+      - name: Verify Bash profile contract fixtures
+        if: runner.os == 'Linux'
+        shell: bash
+        run: ./tests/test-cross-platform-contract.sh
       - name: Run Rust contract tests
         run: cargo test --manifest-path rust/ssh-img-paste-core/Cargo.toml
       - name: Run Python tracer tests
