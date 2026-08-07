@@ -270,9 +270,9 @@ fn has_shell_meta(value: &str) -> bool {
 fn valid_host(value: &str) -> bool {
     !value.is_empty()
         && !value.starts_with('-')
-        && !value.chars().any(char::is_whitespace)
-        && !has_control(value)
-        && !has_shell_meta(value)
+        && value
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '@' | ':' | '-'))
 }
 
 fn safe_path_chars(value: &str) -> bool {
@@ -284,7 +284,7 @@ fn safe_path_chars(value: &str) -> bool {
 fn valid_absolute_path(value: &str) -> bool {
     value.starts_with('/')
         && !value.contains("//")
-        && !value.split('/').any(|part| part == "..")
+        && !value.split('/').any(|part| matches!(part, "." | ".."))
         && !has_control(value)
         && !has_shell_meta(value)
         && safe_path_chars(value)
@@ -296,7 +296,7 @@ fn valid_remote_dir(value: &str) -> bool {
         && !value.starts_with('-')
         && value != "."
         && !value.contains("//")
-        && !value.split('/').any(|part| part == "..")
+        && !value.split('/').any(|part| matches!(part, "." | ".."))
         && !has_control(value)
         && !has_shell_meta(value)
         && safe_path_chars(value)
@@ -313,4 +313,191 @@ fn valid_restore_seconds(value: &str) -> bool {
         normalized
     };
     normalized.len() < 5 || (normalized.len() == 5 && normalized <= "86400")
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CommandPlan {
+    pub program: String,
+    pub arguments: Vec<std::ffi::OsString>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UploadPlan {
+    pub mkdir: CommandPlan,
+    pub upload: CommandPlan,
+    pub finalize: CommandPlan,
+    pub remote_path: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PlanError {
+    InvalidProfileField(&'static str),
+    InvalidRemoteName,
+    InvalidSource,
+}
+
+pub fn build_upload_plan(
+    profile: &ValidatedProfile,
+    source: &std::path::Path,
+    remote_name: &str,
+) -> Result<UploadPlan, PlanError> {
+    revalidate_for_plan(profile)?;
+    if !valid_local_source(source) {
+        return Err(PlanError::InvalidSource);
+    }
+    if !valid_remote_name(remote_name) {
+        return Err(PlanError::InvalidRemoteName);
+    }
+
+    let remote_home = profile.remote_home.trim_end_matches('/');
+    let remote_dir = profile.remote_dir.trim_end_matches('/');
+    let remote_root = if remote_home.is_empty() {
+        format!("/{remote_dir}")
+    } else {
+        format!("{remote_home}/{remote_dir}")
+    };
+    let remote_path = format!("{remote_root}/{remote_name}");
+    let partial_path = format!("{remote_root}/.{remote_name}.partial");
+
+    let mkdir = ssh_plan(&profile.host, format!("mkdir -p -- {remote_root}"));
+    let upload = CommandPlan {
+        program: "scp".to_owned(),
+        arguments: vec![
+            "-q".into(),
+            "-B".into(),
+            "-o".into(),
+            "BatchMode=yes".into(),
+            "-o".into(),
+            "ConnectTimeout=6".into(),
+            "--".into(),
+            source.as_os_str().to_owned(),
+            format!("{}:{partial_path}", profile.host).into(),
+        ],
+    };
+    let finalize = ssh_plan(&profile.host, format!("mv -- {partial_path} {remote_path}"));
+
+    Ok(UploadPlan {
+        mkdir,
+        upload,
+        finalize,
+        remote_path,
+    })
+}
+
+fn ssh_plan(host: &str, remote_command: String) -> CommandPlan {
+    CommandPlan {
+        program: "ssh".to_owned(),
+        arguments: vec![
+            "-o".into(),
+            "BatchMode=yes".into(),
+            "-o".into(),
+            "ConnectTimeout=6".into(),
+            host.into(),
+            remote_command.into(),
+        ],
+    }
+}
+
+fn revalidate_for_plan(profile: &ValidatedProfile) -> Result<(), PlanError> {
+    if has_control(&profile.label) {
+        return Err(PlanError::InvalidProfileField("label"));
+    }
+    if !valid_host(&profile.host) || profile.host.contains(':') {
+        return Err(PlanError::InvalidProfileField("host"));
+    }
+    if !valid_absolute_path(&profile.remote_home) {
+        return Err(PlanError::InvalidProfileField("remote_home"));
+    }
+    if !valid_remote_dir(&profile.remote_dir) {
+        return Err(PlanError::InvalidProfileField("remote_dir"));
+    }
+    if profile
+        .shot_mode
+        .as_deref()
+        .is_some_and(|value| !matches!(value, "region" | "full") || has_control(value))
+    {
+        return Err(PlanError::InvalidProfileField("shot_mode"));
+    }
+    if profile
+        .restore_seconds
+        .as_deref()
+        .is_some_and(|value| !valid_restore_seconds(value))
+    {
+        return Err(PlanError::InvalidProfileField("restore_seconds"));
+    }
+    Ok(())
+}
+
+fn valid_local_source(source: &std::path::Path) -> bool {
+    source.is_absolute() && !source.as_os_str().to_string_lossy().starts_with('-')
+}
+
+fn valid_remote_name(value: &str) -> bool {
+    !value.is_empty()
+        && !value.starts_with('-')
+        && value.ends_with(".png")
+        && !value.contains("..")
+        && value
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClipboardTransaction {
+    generation: u128,
+    expected_text: String,
+    ownership_marker: Option<u64>,
+}
+
+#[derive(Debug, Default)]
+pub struct ClipboardCoordinator {
+    next_generation: u128,
+    active_generation: Option<u128>,
+}
+
+impl ClipboardCoordinator {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn begin(
+        &mut self,
+        expected_text: impl Into<String>,
+        ownership_marker: Option<u64>,
+    ) -> ClipboardTransaction {
+        self.next_generation = self
+            .next_generation
+            .checked_add(1)
+            .expect("clipboard transaction generation exhausted");
+        self.active_generation = Some(self.next_generation);
+        ClipboardTransaction {
+            generation: self.next_generation,
+            expected_text: expected_text.into(),
+            ownership_marker,
+        }
+    }
+
+    pub fn should_restore(
+        &self,
+        transaction: &ClipboardTransaction,
+        current_text: Option<&str>,
+        current_ownership_marker: Option<u64>,
+    ) -> bool {
+        let marker_matches = transaction
+            .ownership_marker
+            .is_some_and(|expected| current_ownership_marker == Some(expected));
+        self.active_generation == Some(transaction.generation)
+            && marker_matches
+            && current_text == Some(transaction.expected_text.as_str())
+    }
+
+    pub fn complete(&mut self, transaction: &ClipboardTransaction) {
+        if self.active_generation == Some(transaction.generation) {
+            self.active_generation = None;
+        }
+    }
+
+    pub fn cancel(&mut self, transaction: &ClipboardTransaction) {
+        self.complete(transaction);
+    }
 }
