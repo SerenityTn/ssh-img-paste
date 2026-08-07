@@ -10,6 +10,7 @@ dist/
 *.egg-info/
 __pycache__/
 *.py[cod]
+target/
 
 # Local Hermes implementation plans and session artifacts
 .hermes/

@@ -7,6 +7,8 @@ on:
   pull_request:
     paths:
       - "xplat/**"
+      - "rust/**"
+      - "docs/CROSS_PLATFORM_ARCHITECTURE.md"
       - "tests/test_xplat.py"
       - "pyproject.toml"
       - ".github/workflows/cross-platform.yml"
@@ -29,9 +31,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
-      - name: Run cross-platform tests
+      - name: Run Rust contract tests
+        run: cargo test --manifest-path rust/ssh-img-paste-core/Cargo.toml
+      - name: Run Python tracer tests
         run: python -m unittest tests.test_xplat -v
-      - name: Install experimental CLI
+      - name: Install experimental Python tracer
         run: python -m pip install .
       - name: Verify installed entry point
         run: ssh-img-paste-xplat --help

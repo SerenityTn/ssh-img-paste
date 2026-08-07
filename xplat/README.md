@@ -1,6 +1,6 @@
-# SSH Image Paste — Windows/Linux tracer
+# SSH Image Paste — Windows/Linux contract tracer
 
-This directory contains the first executable cross-platform slice. It is **experimental** and does not replace the stable macOS v2.0.2 CLI or AppKit app.
+This directory contains an **experimental contract spike**, not the production cross-platform runtime. It does not replace the stable macOS v2.0.2 CLI or AppKit app. The accepted production architecture is documented in [`docs/CROSS_PLATFORM_ARCHITECTURE.md`](../docs/CROSS_PLATFORM_ARCHITECTURE.md): a Rust core/CLI for Windows and Linux with thin native desktop shells.
 
 ## What works now
 
