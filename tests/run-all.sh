@@ -18,4 +18,11 @@ swiftc -target "$(uname -m)-apple-macos13.0" \
   -o "$TMP/ProfileModelsTests"
 "$TMP/ProfileModelsTests"
 
+swiftc -target "$(uname -m)-apple-macos13.0" \
+  "$ROOT/src/NotificationPresenter.swift" \
+  "$ROOT/tests/NotificationPresenterTests.swift" \
+  -framework UserNotifications \
+  -o "$TMP/NotificationPresenterTests"
+"$TMP/NotificationPresenterTests"
+
 printf 'PASS: complete test suite\n'
