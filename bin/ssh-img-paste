@@ -48,6 +48,7 @@ profile_usage() {
 }
 
 notify() {
+  [ "${SSH_IMG_PASTE_SUPPRESS_NOTIFICATIONS:-0}" = 1 ] && return 0
   osascript - "$1" "$2" <<'OSA' >/dev/null 2>&1 || true
 on run argv
   set theSubtitle to item 1 of argv

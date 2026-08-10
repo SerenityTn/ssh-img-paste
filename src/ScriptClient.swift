@@ -39,10 +39,15 @@ final class ScriptClient {
         return sourceInstall
     }
 
-    func runSync(_ arguments: [String], timeout: TimeInterval = ScriptClient.defaultTimeout) -> ScriptResult {
+    func runSync(_ arguments: [String],
+                 timeout: TimeInterval = ScriptClient.defaultTimeout,
+                 environmentOverrides: [String: String] = [:]) -> ScriptResult {
         let task = Process()
         task.executableURL = URL(fileURLWithPath: scriptPath())
         task.arguments = arguments
+        if !environmentOverrides.isEmpty {
+            task.environment = ProcessInfo.processInfo.environment.merging(environmentOverrides) { _, override in override }
+        }
         let tempRoot = fileManager.temporaryDirectory.appendingPathComponent("ssh-img-paste-script-\(UUID().uuidString)", isDirectory: true)
         let outURL = tempRoot.appendingPathComponent("stdout")
         let errURL = tempRoot.appendingPathComponent("stderr")
@@ -124,10 +129,13 @@ final class ScriptClient {
         return errno != ESRCH
     }
 
-    func runAsync(_ arguments: [String], timeout: TimeInterval = ScriptClient.defaultTimeout, completion: @escaping (ScriptResult) -> Void) {
+    func runAsync(_ arguments: [String],
+                  timeout: TimeInterval = ScriptClient.defaultTimeout,
+                  environmentOverrides: [String: String] = [:],
+                  completion: @escaping (ScriptResult) -> Void) {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self = self else { return }
-            let result = self.runSync(arguments, timeout: timeout)
+            let result = self.runSync(arguments, timeout: timeout, environmentOverrides: environmentOverrides)
             DispatchQueue.main.async { completion(result) }
         }
     }
