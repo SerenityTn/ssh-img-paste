@@ -339,10 +339,16 @@ assert_not_contains "$(cat "$TEST_LOG")" $'screencapture\t-i\t-x\t-t\tpng\t'
 assert_contains "$(cat "$TEST_LOG")" "dev-host:/srv/dev/dev-images/shot-"
 assert_not_contains "$(cat "$TEST_LOG")" "prod-host"
 
-# Native app-owned notifications suppress the legacy AppleScript notification to avoid duplicates.
+# Native app-owned screenshot notifications suppress only the duplicate screenshot-success AppleScript.
 : > "$OSASCRIPT_SOURCE_LOG"
-SSH_IMG_PASTE_SUPPRESS_NOTIFICATIONS=1 run_ok --profile dev region >/dev/null
+output="$(SSH_IMG_PASTE_SUPPRESS_SCREENSHOT_SUCCESS_NOTIFICATION=1 SSH_IMG_PASTE_RESULT_FORMAT=tsv run_ok --profile dev region)"
+assert_contains "$output" $'upload\tshot\t/srv/dev/dev-images/shot-'
 assert_not_contains "$(cat "$OSASCRIPT_SOURCE_LOG")" "display notification"
+
+# Clipboard-image success keeps its legacy notification because the app does not replace it.
+: > "$OSASCRIPT_SOURCE_LOG"
+SSH_IMG_PASTE_SUPPRESS_SCREENSHOT_SUCCESS_NOTIFICATION=1 SSH_IMG_PASTE_RESULT_FORMAT=tsv run_ok --profile dev upload >/dev/null
+assert_contains "$(cat "$OSASCRIPT_SOURCE_LOG")" "display notification"
 
 : > "$TEST_LOG"
 run_ok --profile dev list >/dev/null

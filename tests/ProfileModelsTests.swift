@@ -159,6 +159,29 @@ func testScriptClientHandlesLargeStdoutAndStderr() {
     }
 }
 
+func testScriptResultParsesOnlyStructuredUploadKind() {
+    let screenshot = ScriptResult(
+        stdout: "upload\tshot\t/srv/dev/dev-images/shot-1.png\n",
+        stderr: "",
+        status: 0
+    )
+    expect(screenshot.uploadKind == .screenshot, "structured screenshot outcome")
+
+    let clipboard = ScriptResult(
+        stdout: "upload\tclip\t/srv/dev/dev-images/clip-1.png\n",
+        stderr: "",
+        status: 0
+    )
+    expect(clipboard.uploadKind == .clipboardImage, "structured clipboard-image outcome")
+
+    let craftedHumanOutput = ScriptResult(
+        stdout: "✓ Uploaded (Image) → /srv/dev/clip.png [Uploaded (Screenshot)]\n",
+        stderr: "",
+        status: 0
+    )
+    expect(craftedHumanOutput.uploadKind == nil, "human-readable profile labels cannot classify uploads")
+}
+
 func testScriptClientPassesEnvironmentOverrides() {
     let tempDir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("ssh-img-paste-env-test-\(UUID().uuidString)", isDirectory: true)
     let script = tempDir.appendingPathComponent("mock-ssh-img-paste")
@@ -230,6 +253,7 @@ struct ProfileModelsTestRunner {
         testProfileManagerInitialLoadLifecycle()
         testArgumentConstruction()
         testScriptClientHandlesLargeStdoutAndStderr()
+        testScriptResultParsesOnlyStructuredUploadKind()
         testScriptClientPassesEnvironmentOverrides()
         testScriptClientTimeoutTerminatesProcess()
         print("ProfileModelsTests: PASS")
