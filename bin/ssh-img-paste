@@ -48,7 +48,6 @@ profile_usage() {
 }
 
 notify() {
-  [ "${SSH_IMG_PASTE_SUPPRESS_NOTIFICATIONS:-0}" = 1 ] && return 0
   osascript - "$1" "$2" <<'OSA' >/dev/null 2>&1 || true
 on run argv
   set theSubtitle to item 1 of argv
@@ -935,9 +934,15 @@ do_upload() {
   fi
 
   local label; label=$([ "$kind" = shot ] && echo "Screenshot" || echo "Image")
-  echo "✓ Uploaded ($label) → $remote_path [$PROFILE_LABEL]"
-  echo "  Path is on your clipboard — Cmd+V it into your SSH session and send."
-  notify "$label path copied — $PROFILE_LABEL" "clipboard restores in ${grace}s"
+  if [ "${SSH_IMG_PASTE_RESULT_FORMAT:-human}" = tsv ]; then
+    printf 'upload\t%s\t%s\n' "$kind" "$remote_path"
+  else
+    echo "✓ Uploaded ($label) → $remote_path [$PROFILE_LABEL]"
+    echo "  Path is on your clipboard — Cmd+V it into your SSH session and send."
+  fi
+  if [ "$kind" != shot ] || [ "${SSH_IMG_PASTE_SUPPRESS_SCREENSHOT_SUCCESS_NOTIFICATION:-0}" != 1 ]; then
+    notify "$label path copied — $PROFILE_LABEL" "clipboard restores in ${grace}s"
+  fi
 }
 
 # --- dispatch ----------------------------------------------------------------

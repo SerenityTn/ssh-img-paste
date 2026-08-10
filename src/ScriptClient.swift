@@ -1,6 +1,11 @@
 import Darwin
 import Foundation
 
+enum UploadKind: Equatable {
+    case clipboardImage
+    case screenshot
+}
+
 struct ScriptResult {
     let stdout: String
     let stderr: String
@@ -8,6 +13,19 @@ struct ScriptResult {
 
     var succeeded: Bool { status == 0 }
     var sanitizedError: String { ScriptClient.sanitize(stderr.isEmpty ? stdout : stderr) }
+
+    var uploadKind: UploadKind? {
+        guard succeeded else { return nil }
+        let lines = stdout.split(separator: "\n", omittingEmptySubsequences: true)
+        guard lines.count == 1 else { return nil }
+        let fields = lines[0].split(separator: "\t", omittingEmptySubsequences: false)
+        guard fields.count == 3, fields[0] == "upload", fields[2].hasPrefix("/") else { return nil }
+        switch fields[1] {
+        case "clip": return .clipboardImage
+        case "shot": return .screenshot
+        default: return nil
+        }
+    }
 }
 
 final class ScriptClient {

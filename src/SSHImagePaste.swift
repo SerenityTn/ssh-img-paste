@@ -196,7 +196,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func runUpload() {
         setIcon("arrow.up.circle")
         runUploadScriptAsync([]) { [weak self] result in
-            if result.succeeded && result.stdout.contains("Uploaded (Screenshot)") {
+            if result.uploadKind == .screenshot {
                 self?.notificationPresenter.postCaptureSucceeded()
             }
             self?.flash(result.succeeded ? "checkmark.circle" : "exclamationmark.triangle")
@@ -210,7 +210,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         setIcon("arrow.up.circle")
         runUploadScriptAsync(scriptArgs(profileID: profileID)) { [weak self] result in
-            if result.succeeded && result.stdout.contains("Uploaded (Screenshot)") {
+            if result.uploadKind == .screenshot {
                 self?.notificationPresenter.postCaptureSucceeded()
             }
             self?.flash(result.succeeded ? "checkmark.circle" : "exclamationmark.triangle")
@@ -228,7 +228,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         setIcon("camera")
         runUploadScriptAsync(scriptArgs(profileID: request.profileID, command: request.mode)) { [weak self] result in
-            if result.succeeded && result.stdout.contains("Uploaded (Screenshot)") {
+            if result.uploadKind == .screenshot {
                 self?.notificationPresenter.postCaptureSucceeded()
             }
             self?.flash(result.succeeded ? "checkmark.circle" : "exclamationmark.triangle")
@@ -342,7 +342,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self = self else { return }
             let result = self.scriptClient.runSync(
                 args,
-                environmentOverrides: ["SSH_IMG_PASTE_SUPPRESS_NOTIFICATIONS": "1"]
+                environmentOverrides: [
+                    "SSH_IMG_PASTE_RESULT_FORMAT": "tsv",
+                    "SSH_IMG_PASTE_SUPPRESS_SCREENSHOT_SUCCESS_NOTIFICATION": "1",
+                ]
             )
             DispatchQueue.main.async { onDone(result) }
         }

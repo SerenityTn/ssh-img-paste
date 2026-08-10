@@ -190,15 +190,15 @@ func testScriptClientPassesEnvironmentOverrides() {
         defer { try? FileManager.default.removeItem(at: tempDir) }
         try """
         #!/bin/sh
-        printf '%s' "${SSH_IMG_PASTE_SUPPRESS_NOTIFICATIONS:-missing}"
+        printf '%s' "${SSH_IMG_PASTE_RESULT_FORMAT:-missing}"
         """.write(to: script, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: script.path)
         let result = ScriptClient(executable: script.path).runSync(
             [],
-            environmentOverrides: ["SSH_IMG_PASTE_SUPPRESS_NOTIFICATIONS": "1"]
+            environmentOverrides: ["SSH_IMG_PASTE_RESULT_FORMAT": "tsv"]
         )
         expect(result.status == 0, "environment override script status")
-        expect(result.stdout == "1", "environment override reaches child process")
+        expect(result.stdout == "tsv", "environment override reaches child process")
     } catch {
         fputs("FAIL: ScriptClient environment override test setup failed: \(error)\n", stderr)
         exit(1)
