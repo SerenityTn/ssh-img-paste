@@ -41,7 +41,8 @@ PLIST
 
 cp assets/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 
-swiftc -O -target "$ARCH-apple-macos13.0" -o "$APP/Contents/MacOS/SSHImagePaste" "${SRC_FILES[@]}" -framework AppKit
+swiftc -O -target "$ARCH-apple-macos13.0" -o "$APP/Contents/MacOS/SSHImagePaste" "${SRC_FILES[@]}" \
+  -framework AppKit -framework UserNotifications
 
 # A default ad-hoc signature uses the binary's changing cdhash as its designated
 # requirement. macOS TCC then treats every rebuilt app as a new Screen Recording

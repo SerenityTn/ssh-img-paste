@@ -159,6 +159,52 @@ func testScriptClientHandlesLargeStdoutAndStderr() {
     }
 }
 
+func testScriptResultParsesOnlyStructuredUploadKind() {
+    let screenshot = ScriptResult(
+        stdout: "upload\tshot\t/srv/dev/dev-images/shot-1.png\n",
+        stderr: "",
+        status: 0
+    )
+    expect(screenshot.uploadKind == .screenshot, "structured screenshot outcome")
+
+    let clipboard = ScriptResult(
+        stdout: "upload\tclip\t/srv/dev/dev-images/clip-1.png\n",
+        stderr: "",
+        status: 0
+    )
+    expect(clipboard.uploadKind == .clipboardImage, "structured clipboard-image outcome")
+
+    let craftedHumanOutput = ScriptResult(
+        stdout: "✓ Uploaded (Image) → /srv/dev/clip.png [Uploaded (Screenshot)]\n",
+        stderr: "",
+        status: 0
+    )
+    expect(craftedHumanOutput.uploadKind == nil, "human-readable profile labels cannot classify uploads")
+}
+
+func testScriptClientPassesEnvironmentOverrides() {
+    let tempDir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("ssh-img-paste-env-test-\(UUID().uuidString)", isDirectory: true)
+    let script = tempDir.appendingPathComponent("mock-ssh-img-paste")
+    do {
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        try """
+        #!/bin/sh
+        printf '%s' "${SSH_IMG_PASTE_RESULT_FORMAT:-missing}"
+        """.write(to: script, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: script.path)
+        let result = ScriptClient(executable: script.path).runSync(
+            [],
+            environmentOverrides: ["SSH_IMG_PASTE_RESULT_FORMAT": "tsv"]
+        )
+        expect(result.status == 0, "environment override script status")
+        expect(result.stdout == "tsv", "environment override reaches child process")
+    } catch {
+        fputs("FAIL: ScriptClient environment override test setup failed: \(error)\n", stderr)
+        exit(1)
+    }
+}
+
 func expectProcessIsGone(pid: pid_t, _ message: String) {
     errno = 0
     let result = Darwin.kill(pid, 0)
@@ -207,6 +253,8 @@ struct ProfileModelsTestRunner {
         testProfileManagerInitialLoadLifecycle()
         testArgumentConstruction()
         testScriptClientHandlesLargeStdoutAndStderr()
+        testScriptResultParsesOnlyStructuredUploadKind()
+        testScriptClientPassesEnvironmentOverrides()
         testScriptClientTimeoutTerminatesProcess()
         print("ProfileModelsTests: PASS")
     }

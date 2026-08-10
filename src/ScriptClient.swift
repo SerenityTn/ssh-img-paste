@@ -1,6 +1,11 @@
 import Darwin
 import Foundation
 
+enum UploadKind: Equatable {
+    case clipboardImage
+    case screenshot
+}
+
 struct ScriptResult {
     let stdout: String
     let stderr: String
@@ -8,6 +13,19 @@ struct ScriptResult {
 
     var succeeded: Bool { status == 0 }
     var sanitizedError: String { ScriptClient.sanitize(stderr.isEmpty ? stdout : stderr) }
+
+    var uploadKind: UploadKind? {
+        guard succeeded else { return nil }
+        let lines = stdout.split(separator: "\n", omittingEmptySubsequences: true)
+        guard lines.count == 1 else { return nil }
+        let fields = lines[0].split(separator: "\t", omittingEmptySubsequences: false)
+        guard fields.count == 3, fields[0] == "upload", fields[2].hasPrefix("/") else { return nil }
+        switch fields[1] {
+        case "clip": return .clipboardImage
+        case "shot": return .screenshot
+        default: return nil
+        }
+    }
 }
 
 final class ScriptClient {
@@ -39,10 +57,15 @@ final class ScriptClient {
         return sourceInstall
     }
 
-    func runSync(_ arguments: [String], timeout: TimeInterval = ScriptClient.defaultTimeout) -> ScriptResult {
+    func runSync(_ arguments: [String],
+                 timeout: TimeInterval = ScriptClient.defaultTimeout,
+                 environmentOverrides: [String: String] = [:]) -> ScriptResult {
         let task = Process()
         task.executableURL = URL(fileURLWithPath: scriptPath())
         task.arguments = arguments
+        if !environmentOverrides.isEmpty {
+            task.environment = ProcessInfo.processInfo.environment.merging(environmentOverrides) { _, override in override }
+        }
         let tempRoot = fileManager.temporaryDirectory.appendingPathComponent("ssh-img-paste-script-\(UUID().uuidString)", isDirectory: true)
         let outURL = tempRoot.appendingPathComponent("stdout")
         let errURL = tempRoot.appendingPathComponent("stderr")
@@ -124,10 +147,13 @@ final class ScriptClient {
         return errno != ESRCH
     }
 
-    func runAsync(_ arguments: [String], timeout: TimeInterval = ScriptClient.defaultTimeout, completion: @escaping (ScriptResult) -> Void) {
+    func runAsync(_ arguments: [String],
+                  timeout: TimeInterval = ScriptClient.defaultTimeout,
+                  environmentOverrides: [String: String] = [:],
+                  completion: @escaping (ScriptResult) -> Void) {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self = self else { return }
-            let result = self.runSync(arguments, timeout: timeout)
+            let result = self.runSync(arguments, timeout: timeout, environmentOverrides: environmentOverrides)
             DispatchQueue.main.async { completion(result) }
         }
     }

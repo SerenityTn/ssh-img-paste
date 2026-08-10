@@ -4,6 +4,10 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- Restored reliable native menu-bar notifications after a screenshot path is copied, including captures triggered by clipboard fallback.
+
 ## [2.0.2] - 2026-08-02
 
 ### Fixed

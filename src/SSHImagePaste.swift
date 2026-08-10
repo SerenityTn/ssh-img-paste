@@ -25,12 +25,14 @@ private struct CaptureRequest {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
     private let scriptClient = ScriptClient()
+    private let notificationPresenter = NotificationPresenter()
     private var profileManager: ProfileManagerWindowController?
     private var uploadCache: [String: UploadCacheEntry] = [:]
     private var loadingUploads = Set<String>()
     private let idleSymbol = "photo.on.rectangle.angled"
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        notificationPresenter.prepare()
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem.button {
             button.image = symbol(idleSymbol)
@@ -193,8 +195,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func runUpload() {
         setIcon("arrow.up.circle")
-        runScriptAsync([]) { [weak self] ok in
-            self?.flash(ok ? "checkmark.circle" : "exclamationmark.triangle")
+        runUploadScriptAsync([]) { [weak self] result in
+            if result.uploadKind == .screenshot {
+                self?.notificationPresenter.postCaptureSucceeded()
+            }
+            self?.flash(result.succeeded ? "checkmark.circle" : "exclamationmark.triangle")
         }
     }
 
@@ -204,8 +209,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         setIcon("arrow.up.circle")
-        runScriptAsync(scriptArgs(profileID: profileID)) { [weak self] ok in
-            self?.flash(ok ? "checkmark.circle" : "exclamationmark.triangle")
+        runUploadScriptAsync(scriptArgs(profileID: profileID)) { [weak self] result in
+            if result.uploadKind == .screenshot {
+                self?.notificationPresenter.postCaptureSucceeded()
+            }
+            self?.flash(result.succeeded ? "checkmark.circle" : "exclamationmark.triangle")
         }
     }
 
@@ -219,8 +227,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         setIcon("camera")
-        runScriptAsync(scriptArgs(profileID: request.profileID, command: request.mode)) { [weak self] ok in
-            self?.flash(ok ? "checkmark.circle" : "exclamationmark.triangle")
+        runUploadScriptAsync(scriptArgs(profileID: request.profileID, command: request.mode)) { [weak self] result in
+            if result.uploadKind == .screenshot {
+                self?.notificationPresenter.postCaptureSucceeded()
+            }
+            self?.flash(result.succeeded ? "checkmark.circle" : "exclamationmark.triangle")
         }
     }
 
@@ -323,6 +334,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self = self else { return }
             let result = self.scriptClient.runSync(args)
             DispatchQueue.main.async { onDone(result.succeeded) }
+        }
+    }
+
+    private func runUploadScriptAsync(_ args: [String], onDone: @escaping (ScriptResult) -> Void) {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self = self else { return }
+            let result = self.scriptClient.runSync(
+                args,
+                environmentOverrides: [
+                    "SSH_IMG_PASTE_RESULT_FORMAT": "tsv",
+                    "SSH_IMG_PASTE_SUPPRESS_SCREENSHOT_SUCCESS_NOTIFICATION": "1",
+                ]
+            )
+            DispatchQueue.main.async { onDone(result) }
         }
     }
 
