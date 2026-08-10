@@ -340,9 +340,9 @@ assert_contains "$(cat "$TEST_LOG")" "dev-host:/srv/dev/dev-images/shot-"
 assert_not_contains "$(cat "$TEST_LOG")" "prod-host"
 
 # Native app-owned notifications suppress the legacy AppleScript notification to avoid duplicates.
-: > "$OSASCRIPT_LOG"
+: > "$OSASCRIPT_SOURCE_LOG"
 SSH_IMG_PASTE_SUPPRESS_NOTIFICATIONS=1 run_ok --profile dev region >/dev/null
-assert_eq "$(cat "$OSASCRIPT_LOG")" ""
+assert_not_contains "$(cat "$OSASCRIPT_SOURCE_LOG")" "display notification"
 
 : > "$TEST_LOG"
 run_ok --profile dev list >/dev/null
