@@ -37,9 +37,12 @@ The host can be an SSH config alias. The remote upload directory must already ex
 
 ```bash
 python3 -m unittest tests.test_xplat -v
+python3 -m unittest tests.test_linux_e2e -v  # Ubuntu/Linux only
 ```
 
-The tests cover Windows/Linux config paths, literal profile persistence, adversarial path and host rejection, argument-array SCP construction, file upload execution, and the module entry point.
+The ordinary tests cover Windows/Linux config paths, literal profile persistence, adversarial path and host rejection, argument-array SCP construction, file upload execution, and the module entry point.
+
+The Ubuntu end-to-end test starts a real Xvfb display, captures a real PNG with `scrot`, creates a profile through the CLI, starts an ephemeral unprivileged OpenSSH server, uploads through the real `scp` client, and verifies the destination bytes. It requires `openssh-server`, `scrot`, and `xvfb`. This is headless X11 and transport evidence—not GNOME/Wayland portal, clipboard, notification, tray, or installer acceptance.
 
 ## Current product boundary
 

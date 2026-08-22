@@ -11,6 +11,7 @@ on:
       - "docs/CROSS_PLATFORM_ARCHITECTURE.md"
       - "contract/**"
       - "tests/test_xplat.py"
+      - "tests/test_linux_e2e.py"
       - "tests/test-cross-platform-contract.sh"
       - "pyproject.toml"
       - ".github/workflows/cross-platform.yml"
@@ -33,6 +34,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
+      - name: Install Ubuntu end-to-end dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y openssh-server scrot xvfb
+          sudo mkdir -p /run/sshd
       - name: Verify Bash profile contract fixtures
         if: runner.os == 'Linux'
         shell: bash
@@ -41,6 +48,9 @@ jobs:
         run: cargo test --manifest-path rust/ssh-img-paste-core/Cargo.toml
       - name: Run Python tracer tests
         run: python -m unittest tests.test_xplat -v
+      - name: Run Ubuntu X11 and SCP end-to-end test
+        if: runner.os == 'Linux'
+        run: python -m unittest tests.test_linux_e2e -v
       - name: Install experimental Python tracer
         run: python -m pip install .
       - name: Verify installed entry point
