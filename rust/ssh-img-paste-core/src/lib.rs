@@ -329,6 +329,85 @@ pub struct UploadPlan {
     pub remote_path: String,
 }
 
+/// Execution budgets passed to a platform command executor.
+///
+/// `command_timeout` applies independently to each of the three upload steps,
+/// so the full upload may consume roughly three times this duration. A zero
+/// duration requests an immediate timeout without spawning the command.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ExecutionPolicy {
+    pub command_timeout: std::time::Duration,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CommandFailure {
+    Spawn { message: String },
+    Exit { code: Option<i32>, stderr: String },
+    Timeout,
+    Cancelled,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CommandOutcome {
+    Success,
+    Failure(CommandFailure),
+}
+
+/// Platform boundary for executing already-validated command plans.
+///
+/// Implementations own wall-clock enforcement, cancellation observation,
+/// bounded pipe draining, and process-tree termination. Returning `Timeout` or
+/// `Cancelled` classifies the adapter's completed cleanup; this core does not
+/// perform that cleanup itself.
+pub trait CommandExecutor {
+    fn execute(&mut self, command: &CommandPlan, timeout: std::time::Duration) -> CommandOutcome;
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UploadExecution {
+    pub remote_path: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UploadStep {
+    CreateRemoteDirectory,
+    Upload,
+    Finalize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UploadExecutionError {
+    pub step: UploadStep,
+    pub failure: CommandFailure,
+}
+
+pub fn execute_upload_plan(
+    plan: &UploadPlan,
+    executor: &mut impl CommandExecutor,
+    policy: ExecutionPolicy,
+) -> Result<UploadExecution, UploadExecutionError> {
+    if policy.command_timeout.is_zero() {
+        return Err(UploadExecutionError {
+            step: UploadStep::CreateRemoteDirectory,
+            failure: CommandFailure::Timeout,
+        });
+    }
+    let steps = [
+        (UploadStep::CreateRemoteDirectory, &plan.mkdir),
+        (UploadStep::Upload, &plan.upload),
+        (UploadStep::Finalize, &plan.finalize),
+    ];
+    for (step, command) in steps {
+        if let CommandOutcome::Failure(failure) = executor.execute(command, policy.command_timeout)
+        {
+            return Err(UploadExecutionError { step, failure });
+        }
+    }
+    Ok(UploadExecution {
+        remote_path: plan.remote_path.clone(),
+    })
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PlanError {
     InvalidProfileField(&'static str),
