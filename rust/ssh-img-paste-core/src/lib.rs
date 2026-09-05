@@ -572,6 +572,15 @@ fn process_group_is_drained(group: &processkit::ProcessGroup) -> Result<bool, pr
     Ok(group_membership_is_drained(&members, active_process_count))
 }
 
+fn tracked_members_are_dead(members: &[(u32, u64)]) -> Result<bool, processkit::Error> {
+    for (pid, start_time) in members {
+        if processkit::process_is_alive(*pid, Some(*start_time))? {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
 async fn finish_process_readers(
     mut stdout: tokio::task::JoinHandle<std::io::Result<Vec<u8>>>,
     mut stderr: tokio::task::JoinHandle<std::io::Result<Vec<u8>>>,
@@ -687,50 +696,84 @@ async fn run_grouped_process(
     };
 
     if !matches!(run_end, RunEnd::NaturalDrained) {
+        let tracked_members = match group.members_info() {
+            Ok(members) => {
+                let mut tracked = Vec::with_capacity(members.len());
+                for member in members {
+                    let start_time = member.start_time();
+                    if let Some(start_time) = start_time {
+                        tracked.push((member.pid(), start_time));
+                    }
+                    #[cfg(target_os = "windows")]
+                    if start_time.is_none() {
+                        cleanup_issues.push(format!(
+                            "Windows member {} had no start-time identity",
+                            member.pid()
+                        ));
+                    }
+                }
+                tracked
+            }
+            Err(error) => {
+                cleanup_issues.push(format!("containment identities could not be read: {error}"));
+                Vec::new()
+            }
+        };
         if let Err(error) = group.kill_all() {
             cleanup_issues.push(format!("containment kill failed: {error}"));
         }
         let cleanup_deadline = tokio::time::Instant::now() + INTERNAL_CLEANUP_GRACE;
         let mut drained = false;
-        let mut last_reap_error = None;
-        let mut last_membership_error = None;
         loop {
-            if status.is_none() {
+            let reap_error = if status.is_none() {
                 match child.try_wait() {
                     Ok(observed) => {
                         status = observed;
-                        last_reap_error = None;
+                        None
                     }
-                    Err(error) => last_reap_error = Some(error.to_string()),
+                    Err(error) => Some(error.to_string()),
                 }
-            }
-            match process_group_is_drained(&group) {
-                Ok(true) if status.is_some() => {
-                    drained = true;
-                    break;
+            } else {
+                None
+            };
+            let (group_drained, membership_error) = match process_group_is_drained(&group) {
+                Ok(value) => (value, None),
+                Err(error) => (false, Some(error.to_string())),
+            };
+            let (identities_dead, identity_error) = if group_drained && status.is_some() {
+                match tracked_members_are_dead(&tracked_members) {
+                    Ok(value) => (value, None),
+                    Err(error) => (false, Some(error.to_string())),
                 }
-                Ok(_) => last_membership_error = None,
-                Err(error) => last_membership_error = Some(error.to_string()),
+            } else {
+                (false, None)
+            };
+            if group_drained && status.is_some() && identities_dead {
+                drained = true;
+                break;
             }
             if tokio::time::Instant::now() >= cleanup_deadline {
+                let mut detail = String::from(
+                    "containment did not drain, tracked members remained live, or direct child was not reaped within cleanup grace",
+                );
+                if let Some(error) = reap_error {
+                    detail.push_str("; last reap error: ");
+                    detail.push_str(&error);
+                }
+                if let Some(error) = membership_error {
+                    detail.push_str("; last membership error: ");
+                    detail.push_str(&error);
+                }
+                if let Some(error) = identity_error {
+                    detail.push_str("; last identity error: ");
+                    detail.push_str(&error);
+                }
+                cleanup_issues.push(detail);
                 break;
             }
             tokio::time::sleep(POLL_INTERVAL).await;
         }
-        if !drained {
-            let mut detail = String::from(
-                "containment did not drain and direct child was not reaped within cleanup grace",
-            );
-            if let Some(error) = last_reap_error {
-                detail.push_str("; last reap error: ");
-                detail.push_str(&error);
-            }
-            if let Some(error) = last_membership_error {
-                detail.push_str("; last membership error: ");
-                detail.push_str(&error);
-            }
-            cleanup_issues.push(detail);
-        }
+        debug_assert!(drained || !cleanup_issues.is_empty());
     }
 
     let reader_result = finish_process_readers(stdout_reader, stderr_reader).await;
