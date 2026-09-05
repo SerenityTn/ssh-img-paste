@@ -3,7 +3,7 @@ using Forms = System.Windows.Forms;
 
 namespace SSHImagePaste.Windows;
 
-public partial class App : Application
+public partial class App : System.Windows.Application
 {
     private Forms.NotifyIcon? trayIcon;
     private MainWindow? window;
