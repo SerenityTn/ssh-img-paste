@@ -3,7 +3,7 @@ using System.Windows;
 
 namespace SSHImagePaste.Windows;
 
-public partial class MainWindow : Window
+public partial class MainWindow : System.Windows.Window
 {
     private bool allowClose;
 
