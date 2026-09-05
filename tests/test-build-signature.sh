@@ -2,7 +2,8 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-TMP="$(mktemp -d -t ssh-img-paste-signature-tests)"
+TMP_ROOT="${TMPDIR:-/tmp}"
+TMP="$(mktemp -d "${TMP_ROOT%/}/ssh-img-paste-signature-tests.XXXXXX")"
 trap 'rm -rf "$TMP"' EXIT
 
 APP_DIR="$TMP/Applications" "$ROOT/build.sh" >/dev/null

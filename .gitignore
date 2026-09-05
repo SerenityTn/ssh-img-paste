@@ -5,7 +5,12 @@ ssh-img-paste.env
 
 # Build output
 build/
+dist/
 *.app/
+*.egg-info/
+__pycache__/
+*.py[cod]
+target/
 
 # Local Hermes implementation plans and session artifacts
 .hermes/

@@ -1,0 +1,64 @@
+name: Cross-platform core
+
+on:
+  push:
+    branches:
+      - feat/cross-platform-core
+  pull_request:
+    paths:
+      - "xplat/**"
+      - "rust/**"
+      - "docs/CROSS_PLATFORM_ARCHITECTURE.md"
+      - "contract/**"
+      - "tests/test_xplat.py"
+      - "tests/test_linux_e2e.py"
+      - "tests/test-cross-platform-contract.sh"
+      - "pyproject.toml"
+      - ".github/workflows/cross-platform.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: ${{ matrix.os }} / Python ${{ matrix.python }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ["3.11"]
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install Ubuntu end-to-end dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y dbus-x11 libadwaita-1-dev libgtk-4-dev openssh-server scrot xvfb
+          sudo mkdir -p /run/sshd
+      - name: Verify Bash profile contract fixtures
+        if: runner.os == 'Linux'
+        shell: bash
+        run: ./tests/test-cross-platform-contract.sh
+      - name: Run Rust contract tests
+        run: cargo test --locked --manifest-path rust/ssh-img-paste-core/Cargo.toml
+      - name: Run Python tracer tests
+        run: python -m unittest tests.test_xplat -v
+      - name: Run Ubuntu X11 and SCP end-to-end test
+        if: runner.os == 'Linux'
+        run: python -m unittest tests.test_linux_e2e -v
+      - name: Build and test Linux desktop shell
+        if: runner.os == 'Linux'
+        run: |
+          cargo test --locked --manifest-path rust/ssh-img-paste-linux/Cargo.toml
+          cargo build --locked --manifest-path rust/ssh-img-paste-linux/Cargo.toml
+          timeout 10s dbus-run-session -- xvfb-run -a -s '-screen 0 1024x768x24 -nolisten tcp' \
+            rust/ssh-img-paste-linux/target/debug/ssh-img-paste-linux --smoke-test
+      - name: Install experimental Python tracer
+        run: python -m pip install .
+      - name: Verify installed entry point
+        run: ssh-img-paste-xplat --help
