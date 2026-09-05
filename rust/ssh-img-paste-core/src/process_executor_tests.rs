@@ -422,10 +422,16 @@ fn deadline_kills_a_windows_job_descendant_before_return() {
     let identity = processkit::process_info(descendant_pid)
         .expect("inspect Windows descendant")
         .expect("Windows descendant should be live before parent exits");
-    assert_eq!(
-        executor.join().expect("Windows executor thread"),
-        CommandOutcome::Failure(CommandFailure::Timeout),
-        "the executor must not report success while a Job Object descendant is still active"
+    let outcome = executor.join().expect("Windows executor thread");
+    assert!(
+        matches!(
+            &outcome,
+            CommandOutcome::Failure(CommandFailure::Cleanup {
+                trigger: CleanupTrigger::Timeout,
+                ..
+            })
+        ),
+        "the executor must report bounded cleanup uncertainty, not success, while a Job Object descendant outlives the deadline: {outcome:?}"
     );
     assert!(
         !processkit::process_is_alive(descendant_pid, identity.start_time())
