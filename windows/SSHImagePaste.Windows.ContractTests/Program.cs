@@ -12,6 +12,7 @@ void Check(bool condition, string message)
 
 var expectedActions = new[]
 {
+    DesktopAction.OpenWindow,
     DesktopAction.UploadClipboard,
     DesktopAction.CaptureRegion,
     DesktopAction.CaptureFullScreen,
@@ -19,6 +20,11 @@ var expectedActions = new[]
     DesktopAction.Quit,
 };
 Check(TrayMenuModel.PrimaryActions.SequenceEqual(expectedActions), "tray action order differs from desktop parity contract");
+Check(TrayInteraction.ActionForSingleLeftClick() is null, "single-clicking the tray icon must never upload or perform another side effect");
+Check(TrayInteraction.ActionForDoubleClick() == DesktopAction.OpenWindow, "double-clicking the tray icon must only open the window");
+Check(ClosePolicy.Decide(trayAvailable: true) == CloseDecision.HideToTray, "a usable tray should keep the application available after close");
+Check(ClosePolicy.Decide(trayAvailable: false) == CloseDecision.ExitApplication, "without a usable tray, close must not strand an invisible process");
+Check(TrayMenuModel.Label(DesktopAction.ManageProfiles) == "Manage Profiles…", "profile workflow labels should consistently indicate another workflow");
 
 var hostileArgument = "profile name; $(touch should-not-run)";
 var startInfo = CliInvocation.Create("C:\\Program Files\\SSH Image Paste\\ssh-img-paste.exe", new[]
