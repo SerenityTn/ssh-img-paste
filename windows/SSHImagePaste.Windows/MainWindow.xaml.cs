@@ -1,14 +1,19 @@
 using System.ComponentModel;
 using System.Windows;
+using System.Windows.Automation.Peers;
 
 namespace SSHImagePaste.Windows;
 
 public partial class MainWindow : System.Windows.Window
 {
+    private readonly Func<bool> trayAvailable;
+    private readonly Action shutdownApplication;
     private bool allowClose;
 
-    public MainWindow()
+    public MainWindow(Func<bool> trayAvailable, Action shutdownApplication)
     {
+        this.trayAvailable = trayAvailable;
+        this.shutdownApplication = shutdownApplication;
         InitializeComponent();
     }
 
@@ -24,15 +29,29 @@ public partial class MainWindow : System.Windows.Window
 
     public void ReportAction(DesktopAction action)
     {
-        StatusText.Text = action switch
+        SetStatus(action switch
         {
-            DesktopAction.UploadClipboard => "Clipboard upload requested — Rust CLI connection is under development",
-            DesktopAction.CaptureRegion => "Region capture requested — Windows capture adapter is under development",
-            DesktopAction.CaptureFullScreen => "Full-screen capture requested — Windows capture adapter is under development",
-            DesktopAction.ManageProfiles => "Profile manager requested — authoritative Rust persistence is under development",
+            DesktopAction.UploadClipboard => "Unavailable in this preview — Rust CLI connection is under development",
+            DesktopAction.CaptureRegion => "Unavailable in this preview — Windows region capture is under development",
+            DesktopAction.CaptureFullScreen => "Unavailable in this preview — Windows full-screen capture is under development",
+            DesktopAction.ManageProfiles => "Unavailable in this preview — authoritative Rust profile persistence is under development",
             _ => StatusText.Text,
-        };
+        });
         ShowAndActivate();
+    }
+
+    public void ReportTrayUnavailable()
+    {
+        SetStatus("Tray integration is unavailable. Closing this window will exit SSH Image Paste.");
+        ShowAndActivate();
+    }
+
+    private void SetStatus(string status)
+    {
+        StatusText.Text = status;
+        var peer = UIElementAutomationPeer.FromElement(StatusText)
+            ?? UIElementAutomationPeer.CreatePeerForElement(StatusText);
+        peer?.RaiseAutomationEvent(AutomationEvents.LiveRegionChanged);
     }
 
     public void CloseForShutdown()
@@ -43,13 +62,22 @@ public partial class MainWindow : System.Windows.Window
 
     protected override void OnClosing(CancelEventArgs e)
     {
-        if (!allowClose)
+        if (allowClose)
+        {
+            base.OnClosing(e);
+            return;
+        }
+
+        if (ClosePolicy.Decide(trayAvailable()) == CloseDecision.HideToTray)
         {
             e.Cancel = true;
             Hide();
             return;
         }
+
+        allowClose = true;
         base.OnClosing(e);
+        Dispatcher.BeginInvoke(shutdownApplication);
     }
 
     private void UploadClipboard_Click(object sender, RoutedEventArgs e) =>

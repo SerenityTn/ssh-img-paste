@@ -12,26 +12,41 @@
         </Grid.RowDefinitions>
 
         <StackPanel Grid.Row="0" Margin="0,0,0,20">
-            <TextBlock Text="SSH Image Paste" FontSize="26" FontWeight="SemiBold" />
+            <TextBlock Text="SSH Image Paste" FontSize="26" FontWeight="SemiBold"
+                       AutomationProperties.HeadingLevel="Level1" />
             <TextBlock Text="Windows desktop preview" Margin="0,6,0,0"
-                       Foreground="DimGray" />
+                       Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}" />
         </StackPanel>
 
-        <Border Grid.Row="1" Background="#FFF3F4F6" CornerRadius="6"
-                Padding="12" Margin="0,0,0,18">
-            <TextBlock x:Name="StatusText" Text="Configure a profile before uploading"
-                       TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" />
+        <Border Grid.Row="1"
+                Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"
+                CornerRadius="6" Padding="12" Margin="0,0,0,18">
+            <TextBlock x:Name="StatusText"
+                       Text="Desktop shell preview — upload, capture, and profiles are not connected yet"
+                       TextWrapping="Wrap"
+                       Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"
+                       AutomationProperties.Name="SSH Image Paste status"
+                       AutomationProperties.HelpText="Reports desktop integration availability"
+                       AutomationProperties.LiveSetting="Polite" />
         </Border>
 
         <StackPanel Grid.Row="2">
-            <Button Content="Upload Clipboard Image" Height="44" Margin="0,0,0,10"
-                    IsDefault="True" Click="UploadClipboard_Click" />
-            <Button Content="Capture Region" Height="40" Margin="0,0,0,10"
-                    Click="CaptureRegion_Click" />
-            <Button Content="Capture Full Screen" Height="40" Margin="0,0,0,10"
-                    Click="CaptureFullScreen_Click" />
-            <Button Content="Manage Profiles" Height="40"
-                    Click="ManageProfiles_Click" />
+            <Button Content="_Upload Clipboard Image" Height="44" Margin="0,0,0,10"
+                    IsEnabled="False" Click="UploadClipboard_Click"
+                    AutomationProperties.Name="Upload Clipboard Image"
+                    AutomationProperties.HelpText="Unavailable in this preview" />
+            <Button Content="Capture _Region" Height="40" Margin="0,0,0,10"
+                    IsEnabled="False" Click="CaptureRegion_Click"
+                    AutomationProperties.Name="Capture Region"
+                    AutomationProperties.HelpText="Unavailable in this preview" />
+            <Button Content="Capture _Full Screen" Height="40" Margin="0,0,0,10"
+                    IsEnabled="False" Click="CaptureFullScreen_Click"
+                    AutomationProperties.Name="Capture Full Screen"
+                    AutomationProperties.HelpText="Unavailable in this preview" />
+            <Button Content="_Manage Profiles…" Height="40"
+                    IsEnabled="False" Click="ManageProfiles_Click"
+                    AutomationProperties.Name="Manage Profiles"
+                    AutomationProperties.HelpText="Unavailable in this preview" />
         </StackPanel>
     </Grid>
 </Window>

@@ -4,6 +4,7 @@ public static class TrayMenuModel
 {
     public static IReadOnlyList<DesktopAction> PrimaryActions { get; } =
     [
+        DesktopAction.OpenWindow,
         DesktopAction.UploadClipboard,
         DesktopAction.CaptureRegion,
         DesktopAction.CaptureFullScreen,
@@ -13,6 +14,7 @@ public static class TrayMenuModel
 
     public static string Label(DesktopAction action) => action switch
     {
+        DesktopAction.OpenWindow => "Open SSH Image Paste",
         DesktopAction.UploadClipboard => "Upload Clipboard Image",
         DesktopAction.CaptureRegion => "Capture Region",
         DesktopAction.CaptureFullScreen => "Capture Full Screen",
