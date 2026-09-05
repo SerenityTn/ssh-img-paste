@@ -394,35 +394,21 @@ fn timeout_bounds_post_leader_pipe_drain_and_never_reports_success() {
 }
 
 #[cfg(target_os = "windows")]
+fn windows_descendant_pid_marker() -> std::path::PathBuf {
+    std::env::temp_dir().join("ssh-img-paste-windows-job-descendant.pid")
+}
+
+#[cfg(target_os = "windows")]
 #[test]
 fn leader_exit_kills_a_windows_job_descendant_before_return() {
-    let root =
-        std::env::temp_dir().join(format!("ssh-img-paste-windows-job-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&root);
-    std::fs::create_dir_all(&root).expect("create Windows job test directory");
-    let pid_marker = root.join("descendant.pid");
-    let child_script = root.join("child.ps1");
-    let parent_script = root.join("parent.ps1");
-    std::fs::write(&child_script, "Start-Sleep -Seconds 10\n").expect("write child script");
-    std::fs::write(
-        &parent_script,
-        "param([string]$Child, [string]$PidMarker)\n$p = Start-Process -FilePath powershell.exe -WindowStyle Hidden -PassThru -ArgumentList @('-NoProfile','-NonInteractive','-File',$Child)\nSet-Content -LiteralPath $PidMarker -Value $p.Id\nStart-Sleep -Milliseconds 500\n",
-    )
-    .expect("write parent script");
-    let plan = CommandPlan {
-        program: "powershell.exe".into(),
-        arguments: vec![
-            OsString::from("-NoProfile"),
-            OsString::from("-NonInteractive"),
-            OsString::from("-File"),
-            parent_script.into_os_string(),
-            child_script.into_os_string(),
-            pid_marker.clone().into_os_string(),
-        ],
-    };
+    let pid_marker = windows_descendant_pid_marker();
+    let _ = std::fs::remove_file(&pid_marker);
     let executor = std::thread::spawn(move || {
         let mut executor = ProcessExecutor::new(CancellationToken::new(), 128);
-        executor.execute(&plan, Duration::from_secs(5))
+        executor.execute(
+            &helper_command("process_executor_tests::helper_exits_with_windows_job_descendant"),
+            Duration::from_secs(5),
+        )
     });
     let marker_deadline = std::time::Instant::now() + Duration::from_secs(3);
     while !pid_marker.is_file() && std::time::Instant::now() < marker_deadline {
@@ -445,7 +431,28 @@ fn leader_exit_kills_a_windows_job_descendant_before_return() {
             .expect("check Windows descendant after executor return"),
         "Windows Job Object descendant survived executor return"
     );
-    let _ = std::fs::remove_dir_all(root);
+    let _ = std::fs::remove_file(pid_marker);
+}
+
+#[cfg(target_os = "windows")]
+#[test]
+#[ignore]
+fn helper_exits_with_windows_job_descendant() {
+    let descendant = std::process::Command::new(std::env::current_exe().expect("test executable"))
+        .args([
+            "--ignored",
+            "--exact",
+            "process_executor_tests::helper_descendant_sleeps",
+            "--nocapture",
+        ])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .expect("spawn Windows Job Object descendant");
+    std::fs::write(windows_descendant_pid_marker(), descendant.id().to_string())
+        .expect("write Windows descendant PID");
+    std::mem::forget(descendant);
+    std::thread::sleep(Duration::from_millis(500));
 }
 
 #[cfg(target_os = "linux")]
