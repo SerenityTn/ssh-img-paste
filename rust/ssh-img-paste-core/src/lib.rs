@@ -3,6 +3,12 @@
 #[cfg(test)]
 mod process_executor_tests;
 
+mod profile_store;
+pub use profile_store::{
+    DiscoveredProfile, ProfileCatalog, ProfileSelection, ProfileStoreError, SelectedProfile,
+    discover_profiles, resolve_profile,
+};
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProfileId(String);
 

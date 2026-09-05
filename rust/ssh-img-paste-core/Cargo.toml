@@ -9,8 +9,10 @@ license = "MIT"
 path = "src/lib.rs"
 
 [dependencies]
+cap-primitives = "=4.0.3"
+cap-std = "=4.0.3"
 processkit = { version = "=3.3.4", default-features = false, features = ["process-control", "stats"] }
 tokio = { version = "1.49", features = ["rt", "time", "process", "io-util", "sync"] }
 
-[target.'cfg(target_os = "linux")'.dev-dependencies]
+[target.'cfg(unix)'.dependencies]
 libc = "0.2"
