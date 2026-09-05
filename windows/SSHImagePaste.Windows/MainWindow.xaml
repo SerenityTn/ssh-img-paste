@@ -1,0 +1,37 @@
+<Window x:Class="SSHImagePaste.Windows.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="SSH Image Paste" Width="460" Height="410"
+        MinWidth="400" MinHeight="360"
+        WindowStartupLocation="CenterScreen">
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Margin="0,0,0,20">
+            <TextBlock Text="SSH Image Paste" FontSize="26" FontWeight="SemiBold" />
+            <TextBlock Text="Windows desktop preview" Margin="0,6,0,0"
+                       Foreground="DimGray" />
+        </StackPanel>
+
+        <Border Grid.Row="1" Background="#FFF3F4F6" CornerRadius="6"
+                Padding="12" Margin="0,0,0,18">
+            <TextBlock x:Name="StatusText" Text="Configure a profile before uploading"
+                       TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" />
+        </Border>
+
+        <StackPanel Grid.Row="2">
+            <Button Content="Upload Clipboard Image" Height="44" Margin="0,0,0,10"
+                    IsDefault="True" Click="UploadClipboard_Click" />
+            <Button Content="Capture Region" Height="40" Margin="0,0,0,10"
+                    Click="CaptureRegion_Click" />
+            <Button Content="Capture Full Screen" Height="40" Margin="0,0,0,10"
+                    Click="CaptureFullScreen_Click" />
+            <Button Content="Manage Profiles" Height="40"
+                    Click="ManageProfiles_Click" />
+        </StackPanel>
+    </Grid>
+</Window>
