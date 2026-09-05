@@ -400,14 +400,14 @@ fn windows_descendant_pid_marker() -> std::path::PathBuf {
 
 #[cfg(target_os = "windows")]
 #[test]
-fn leader_exit_kills_a_windows_job_descendant_before_return() {
+fn deadline_kills_a_windows_job_descendant_before_return() {
     let pid_marker = windows_descendant_pid_marker();
     let _ = std::fs::remove_file(&pid_marker);
     let executor = std::thread::spawn(move || {
         let mut executor = ProcessExecutor::new(CancellationToken::new(), 128);
         executor.execute(
             &helper_command("process_executor_tests::helper_exits_with_windows_job_descendant"),
-            Duration::from_secs(5),
+            Duration::from_secs(1),
         )
     });
     let marker_deadline = std::time::Instant::now() + Duration::from_secs(3);
@@ -424,7 +424,8 @@ fn leader_exit_kills_a_windows_job_descendant_before_return() {
         .expect("Windows descendant should be live before parent exits");
     assert_eq!(
         executor.join().expect("Windows executor thread"),
-        CommandOutcome::Success
+        CommandOutcome::Failure(CommandFailure::Timeout),
+        "the executor must not report success while a Job Object descendant is still active"
     );
     assert!(
         !processkit::process_is_alive(descendant_pid, identity.start_time())
