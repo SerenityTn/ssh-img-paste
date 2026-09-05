@@ -1,0 +1,30 @@
+name: Windows desktop shell
+
+on:
+  push:
+    branches:
+      - feat/windows-desktop-shell
+      - feat/cross-platform-core
+    paths:
+      - "windows/**"
+      - ".github/workflows/windows-desktop.yml"
+  pull_request:
+    paths:
+      - "windows/**"
+      - ".github/workflows/windows-desktop.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - name: Run desktop shell contracts
+        run: dotnet run --project windows/SSHImagePaste.Windows.ContractTests/SSHImagePaste.Windows.ContractTests.csproj --configuration Release
+      - name: Build WPF desktop shell
+        run: dotnet build windows/SSHImagePaste.Windows/SSHImagePaste.Windows.csproj --configuration Release
