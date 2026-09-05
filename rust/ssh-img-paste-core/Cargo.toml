@@ -9,8 +9,8 @@ license = "MIT"
 path = "src/lib.rs"
 
 [dependencies]
-processkit = { version = "=3.3.4", default-features = false, features = ["process-control"] }
-tokio = { version = "1.49", features = ["rt", "time"] }
+processkit = { version = "=3.3.4", default-features = false, features = ["process-control", "stats"] }
+tokio = { version = "1.49", features = ["rt", "time", "process", "io-util", "sync"] }
 
 [target.'cfg(target_os = "linux")'.dev-dependencies]
 libc = "0.2"

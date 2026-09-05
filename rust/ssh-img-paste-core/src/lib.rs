@@ -460,8 +460,14 @@ impl ProcessExecutor {
 }
 
 enum ProcessWorkerOutcome {
-    Process(Result<processkit::ProcessResult<String>, processkit::Error>),
-    Runtime(String),
+    Exited {
+        status: std::process::ExitStatus,
+        stderr: Vec<u8>,
+    },
+    Spawn(processkit::Error),
+    Adapter(String),
+    Cleanup(String),
+    Stopped,
 }
 
 struct ProcessWorkerCompletion {
@@ -489,6 +495,10 @@ impl RequestedStop {
             Self::Cancelled => CommandFailure::Cancelled,
         }
     }
+}
+
+fn group_membership_is_drained(members: &[u32], active_process_count: usize) -> bool {
+    members.is_empty() && active_process_count == 0
 }
 
 fn requested_stop_before_completion(
@@ -537,6 +547,215 @@ fn reattribute_cleanup_failure(
     }
 }
 
+async fn drain_process_pipe<R>(mut reader: R, limit: usize) -> std::io::Result<Vec<u8>>
+where
+    R: tokio::io::AsyncRead + Unpin,
+{
+    use tokio::io::AsyncReadExt;
+
+    let mut captured = Vec::with_capacity(limit.min(8192));
+    let mut buffer = [0_u8; 8192];
+    loop {
+        let read = reader.read(&mut buffer).await?;
+        if read == 0 {
+            break;
+        }
+        let remaining = limit.saturating_sub(captured.len());
+        captured.extend_from_slice(&buffer[..read.min(remaining)]);
+    }
+    Ok(captured)
+}
+
+fn process_group_is_drained(group: &processkit::ProcessGroup) -> Result<bool, processkit::Error> {
+    let members = group.members()?;
+    let active_process_count = group.stats()?.active_process_count;
+    Ok(group_membership_is_drained(&members, active_process_count))
+}
+
+async fn finish_process_readers(
+    mut stdout: tokio::task::JoinHandle<std::io::Result<Vec<u8>>>,
+    mut stderr: tokio::task::JoinHandle<std::io::Result<Vec<u8>>>,
+) -> Result<(Vec<u8>, Vec<u8>), String> {
+    const TRAILING_DRAIN: std::time::Duration = std::time::Duration::from_millis(250);
+    match tokio::time::timeout(TRAILING_DRAIN, async {
+        let stdout_result = (&mut stdout).await;
+        let stderr_result = (&mut stderr).await;
+        (stdout_result, stderr_result)
+    })
+    .await
+    {
+        Ok((Ok(Ok(stdout)), Ok(Ok(stderr)))) => Ok((stdout, stderr)),
+        Ok((Ok(Err(error)), _)) => Err(format!("stdout reader failed: {error}")),
+        Ok((_, Ok(Err(error)))) => Err(format!("stderr reader failed: {error}")),
+        Ok((Err(_), _)) => Err("stdout reader task panicked".into()),
+        Ok((_, Err(_))) => Err("stderr reader task panicked".into()),
+        Err(_) => {
+            stdout.abort();
+            stderr.abort();
+            let _ = stdout.await;
+            let _ = stderr.await;
+            Err("process output readers did not close after containment drained".into())
+        }
+    }
+}
+
+async fn run_grouped_process(
+    program: String,
+    arguments: Vec<std::ffi::OsString>,
+    stop_requested: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    capture_limit: usize,
+) -> ProcessWorkerOutcome {
+    use std::sync::atomic::Ordering;
+
+    const POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(5);
+    const INTERNAL_CLEANUP_GRACE: std::time::Duration = std::time::Duration::from_millis(1500);
+
+    let group = match processkit::ProcessGroup::new() {
+        Ok(group) => group,
+        Err(error) => return ProcessWorkerOutcome::Adapter(error.to_string()),
+    };
+    let mut command = tokio::process::Command::new(program);
+    command
+        .args(arguments)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    let mut child = match group.spawn(command) {
+        Ok(child) => child,
+        Err(error) => return ProcessWorkerOutcome::Spawn(error),
+    };
+
+    let mut cleanup_issues = Vec::new();
+    let stdout_reader = match child.stdout.take() {
+        Some(pipe) => tokio::spawn(drain_process_pipe(pipe, capture_limit)),
+        None => {
+            cleanup_issues.push("spawned process has no stdout pipe".to_owned());
+            tokio::spawn(async { Ok(Vec::new()) })
+        }
+    };
+    let stderr_reader = match child.stderr.take() {
+        Some(pipe) => tokio::spawn(drain_process_pipe(pipe, capture_limit)),
+        None => {
+            cleanup_issues.push("spawned process has no stderr pipe".to_owned());
+            tokio::spawn(async { Ok(Vec::new()) })
+        }
+    };
+
+    enum RunEnd {
+        NaturalDrained,
+        OuterStop,
+        LeaderExitedWithMembers,
+        InfrastructureFailure,
+    }
+
+    let mut status = None;
+    let run_end = if cleanup_issues.is_empty() {
+        loop {
+            if stop_requested.load(Ordering::Acquire) {
+                break RunEnd::OuterStop;
+            }
+            if status.is_none() {
+                match child.try_wait() {
+                    Ok(observed) => status = observed,
+                    Err(error) => {
+                        cleanup_issues
+                            .push(format!("direct child status could not be read: {error}"));
+                        break RunEnd::InfrastructureFailure;
+                    }
+                }
+            }
+            match process_group_is_drained(&group) {
+                Ok(true) if status.is_some() => break RunEnd::NaturalDrained,
+                Ok(false)
+                    if status.is_some()
+                        && stdout_reader.is_finished()
+                        && stderr_reader.is_finished() =>
+                {
+                    break RunEnd::LeaderExitedWithMembers;
+                }
+                Ok(_) => {}
+                Err(error) => {
+                    cleanup_issues
+                        .push(format!("containment membership could not be read: {error}"));
+                    break RunEnd::InfrastructureFailure;
+                }
+            }
+            tokio::time::sleep(POLL_INTERVAL).await;
+        }
+    } else {
+        RunEnd::InfrastructureFailure
+    };
+
+    if !matches!(run_end, RunEnd::NaturalDrained) {
+        if let Err(error) = group.kill_all() {
+            cleanup_issues.push(format!("containment kill failed: {error}"));
+        }
+        let cleanup_deadline = tokio::time::Instant::now() + INTERNAL_CLEANUP_GRACE;
+        let mut drained = false;
+        let mut last_reap_error = None;
+        let mut last_membership_error = None;
+        loop {
+            if status.is_none() {
+                match child.try_wait() {
+                    Ok(observed) => {
+                        status = observed;
+                        last_reap_error = None;
+                    }
+                    Err(error) => last_reap_error = Some(error.to_string()),
+                }
+            }
+            match process_group_is_drained(&group) {
+                Ok(true) if status.is_some() => {
+                    drained = true;
+                    break;
+                }
+                Ok(_) => last_membership_error = None,
+                Err(error) => last_membership_error = Some(error.to_string()),
+            }
+            if tokio::time::Instant::now() >= cleanup_deadline {
+                break;
+            }
+            tokio::time::sleep(POLL_INTERVAL).await;
+        }
+        if !drained {
+            let mut detail = String::from(
+                "containment did not drain and direct child was not reaped within cleanup grace",
+            );
+            if let Some(error) = last_reap_error {
+                detail.push_str("; last reap error: ");
+                detail.push_str(&error);
+            }
+            if let Some(error) = last_membership_error {
+                detail.push_str("; last membership error: ");
+                detail.push_str(&error);
+            }
+            cleanup_issues.push(detail);
+        }
+    }
+
+    let reader_result = finish_process_readers(stdout_reader, stderr_reader).await;
+    let stderr = match reader_result {
+        Ok((_stdout, stderr)) => stderr,
+        Err(message) => {
+            cleanup_issues.push(message);
+            Vec::new()
+        }
+    };
+    drop(group);
+
+    if !cleanup_issues.is_empty() {
+        return ProcessWorkerOutcome::Cleanup(cleanup_issues.join("; "));
+    }
+    if matches!(run_end, RunEnd::OuterStop) {
+        ProcessWorkerOutcome::Stopped
+    } else {
+        ProcessWorkerOutcome::Exited {
+            status: status.expect("drained process must be reaped"),
+            stderr,
+        }
+    }
+}
+
 impl CommandExecutor for ProcessExecutor {
     fn execute(&mut self, command: &CommandPlan, timeout: std::time::Duration) -> CommandOutcome {
         const POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(5);
@@ -554,8 +773,8 @@ impl CommandExecutor for ProcessExecutor {
         let deadline = started_at.checked_add(timeout);
         let program = command.program.clone();
         let arguments = command.arguments.clone();
-        let process_cancellation = processkit::CancellationToken::new();
-        let worker_cancellation = process_cancellation.clone();
+        let stop_requested = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let worker_stop = stop_requested.clone();
         let worker = match std::thread::Builder::new()
             .name("ssh-img-paste-process".into())
             .spawn(move || {
@@ -564,19 +783,16 @@ impl CommandExecutor for ProcessExecutor {
                     .build()
                 {
                     Ok(runtime) => {
-                        let process = processkit::Command::new(program)
-                            .args(arguments)
-                            .no_timeout()
-                            .cancel_on(worker_cancellation)
-                            .output_buffer(
-                                processkit::OutputBufferPolicy::unbounded()
-                                    .with_max_bytes(CAPTURE_LIMIT),
-                            );
-                        let result = runtime.block_on(process.output_string());
+                        let result = runtime.block_on(run_grouped_process(
+                            program,
+                            arguments,
+                            worker_stop,
+                            CAPTURE_LIMIT,
+                        ));
                         drop(runtime);
-                        ProcessWorkerOutcome::Process(result)
+                        result
                     }
-                    Err(error) => ProcessWorkerOutcome::Runtime(error.to_string()),
+                    Err(error) => ProcessWorkerOutcome::Adapter(error.to_string()),
                 };
                 ProcessWorkerCompletion {
                     outcome,
@@ -609,7 +825,7 @@ impl CommandExecutor for ProcessExecutor {
                 None
             };
             if let Some(requested_stop) = requested_stop {
-                process_cancellation.cancel();
+                stop_requested.store(true, std::sync::atomic::Ordering::Release);
                 return wait_for_stopped_worker(
                     worker,
                     requested_stop,
@@ -643,11 +859,12 @@ fn finish_completed_worker(
             });
         }
     };
-    if let ProcessWorkerOutcome::Process(Err(error)) = &completion.outcome
-        && error.is_teardown()
-    {
+    if let ProcessWorkerOutcome::Cleanup(message) = &completion.outcome {
         return CommandOutcome::Failure(reattribute_cleanup_failure(
-            map_processkit_error(error, limit),
+            CommandFailure::Cleanup {
+                trigger: CleanupTrigger::Exit,
+                message: bounded_text(message.as_bytes(), limit),
+            },
             cancelled_at,
             deadline,
             completion.completed_at,
@@ -696,24 +913,30 @@ fn wait_for_stopped_worker(
 
 fn map_worker_outcome(outcome: ProcessWorkerOutcome, limit: usize) -> CommandOutcome {
     match outcome {
-        ProcessWorkerOutcome::Runtime(message) => {
+        ProcessWorkerOutcome::Adapter(message) => {
             CommandOutcome::Failure(CommandFailure::Adapter {
                 message: bounded_text(message.as_bytes(), limit),
             })
         }
-        ProcessWorkerOutcome::Process(Ok(result)) if result.timed_out() => {
-            CommandOutcome::Failure(CommandFailure::Timeout)
-        }
-        ProcessWorkerOutcome::Process(Ok(result)) if result.is_success() => CommandOutcome::Success,
-        ProcessWorkerOutcome::Process(Ok(result)) => {
-            CommandOutcome::Failure(CommandFailure::Exit {
-                code: result.code(),
-                stderr: bounded_text(result.stderr().as_bytes(), limit),
-            })
-        }
-        ProcessWorkerOutcome::Process(Err(error)) => {
+        ProcessWorkerOutcome::Spawn(error) => {
             CommandOutcome::Failure(map_processkit_error(&error, limit))
         }
+        ProcessWorkerOutcome::Exited { status, .. } if status.success() => CommandOutcome::Success,
+        ProcessWorkerOutcome::Exited { status, stderr } => {
+            CommandOutcome::Failure(CommandFailure::Exit {
+                code: status.code(),
+                stderr: bounded_text(&stderr, limit),
+            })
+        }
+        ProcessWorkerOutcome::Cleanup(message) => {
+            CommandOutcome::Failure(CommandFailure::Cleanup {
+                trigger: CleanupTrigger::Exit,
+                message: bounded_text(message.as_bytes(), limit),
+            })
+        }
+        ProcessWorkerOutcome::Stopped => CommandOutcome::Failure(CommandFailure::Adapter {
+            message: "process stopped without an outer timeout or cancellation".into(),
+        }),
     }
 }
 

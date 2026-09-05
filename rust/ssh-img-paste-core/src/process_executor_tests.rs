@@ -78,6 +78,13 @@ fn diagnostics_remove_terminal_and_bidi_controls_within_the_byte_limit() {
 }
 
 #[test]
+fn group_drain_requires_empty_membership_and_zero_active_processes() {
+    assert!(!group_membership_is_drained(&[41], 0));
+    assert!(!group_membership_is_drained(&[], 1));
+    assert!(group_membership_is_drained(&[], 0));
+}
+
+#[test]
 fn completion_race_uses_event_timestamps_with_cancellation_first_on_ties() {
     let base = std::time::Instant::now();
     assert_eq!(
@@ -423,22 +430,87 @@ fn deadline_kills_a_windows_job_descendant_before_return() {
         .expect("inspect Windows descendant")
         .expect("Windows descendant should be live before parent exits");
     let outcome = executor.join().expect("Windows executor thread");
-    assert!(
-        matches!(
-            &outcome,
-            CommandOutcome::Failure(CommandFailure::Cleanup {
-                trigger: CleanupTrigger::Timeout,
-                ..
-            })
-        ),
-        "the executor must report bounded cleanup uncertainty, not success, while a Job Object descendant outlives the deadline: {outcome:?}"
+    let descendant_alive = processkit::process_is_alive(descendant_pid, identity.start_time())
+        .expect("check Windows descendant after executor return");
+    assert_eq!(
+        outcome,
+        CommandOutcome::Failure(CommandFailure::Timeout),
+        "deadline must become Timeout only after explicit group-drain confirmation"
     );
     assert!(
-        !processkit::process_is_alive(descendant_pid, identity.start_time())
-            .expect("check Windows descendant after executor return"),
+        !descendant_alive,
         "Windows Job Object descendant survived executor return"
     );
     let _ = std::fs::remove_file(pid_marker);
+}
+
+#[cfg(target_os = "windows")]
+fn windows_cancellation_descendant_pid_marker() -> std::path::PathBuf {
+    std::env::temp_dir().join("ssh-img-paste-windows-job-cancellation-descendant.pid")
+}
+
+#[cfg(target_os = "windows")]
+#[test]
+fn cancellation_kills_a_windows_job_descendant_before_return() {
+    let pid_marker = windows_cancellation_descendant_pid_marker();
+    let _ = std::fs::remove_file(&pid_marker);
+    let token = CancellationToken::new();
+    let cancel = token.clone();
+    let executor = std::thread::spawn(move || {
+        let mut executor = ProcessExecutor::new(token, 128);
+        executor.execute(
+            &helper_command(
+                "process_executor_tests::helper_exits_with_windows_cancellation_descendant",
+            ),
+            Duration::from_secs(30),
+        )
+    });
+    let marker_deadline = std::time::Instant::now() + Duration::from_secs(3);
+    while !pid_marker.is_file() && std::time::Instant::now() < marker_deadline {
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    let descendant_pid = std::fs::read_to_string(&pid_marker)
+        .expect("Windows cancellation descendant PID marker")
+        .trim()
+        .parse::<u32>()
+        .expect("numeric Windows cancellation descendant PID");
+    let identity = processkit::process_info(descendant_pid)
+        .expect("inspect Windows cancellation descendant")
+        .expect("Windows cancellation descendant should be live before cancellation");
+    cancel.cancel();
+    let outcome = executor
+        .join()
+        .expect("Windows cancellation executor thread");
+    let descendant_alive = processkit::process_is_alive(descendant_pid, identity.start_time())
+        .expect("check Windows cancellation descendant after executor return");
+    assert_eq!(outcome, CommandOutcome::Failure(CommandFailure::Cancelled));
+    assert!(
+        !descendant_alive,
+        "Windows Job Object descendant survived cancellation return"
+    );
+    let _ = std::fs::remove_file(pid_marker);
+}
+
+#[cfg(target_os = "windows")]
+#[test]
+#[ignore]
+fn helper_exits_with_windows_cancellation_descendant() {
+    let descendant = std::process::Command::new(std::env::current_exe().expect("test executable"))
+        .args([
+            "--ignored",
+            "--exact",
+            "process_executor_tests::helper_descendant_sleeps",
+            "--nocapture",
+        ])
+        .spawn()
+        .expect("spawn Windows cancellation descendant");
+    std::fs::write(
+        windows_cancellation_descendant_pid_marker(),
+        descendant.id().to_string(),
+    )
+    .expect("write Windows cancellation descendant PID");
+    std::mem::forget(descendant);
+    std::thread::sleep(Duration::from_millis(500));
 }
 
 #[cfg(target_os = "windows")]
@@ -452,8 +524,6 @@ fn helper_exits_with_windows_job_descendant() {
             "process_executor_tests::helper_descendant_sleeps",
             "--nocapture",
         ])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
         .spawn()
         .expect("spawn Windows Job Object descendant");
     std::fs::write(windows_descendant_pid_marker(), descendant.id().to_string())
