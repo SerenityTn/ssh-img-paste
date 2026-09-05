@@ -3,6 +3,14 @@ name = "ssh-img-paste-core"
 version = "0.1.0-dev"
 edition = "2024"
 publish = false
+license = "MIT"
 
 [lib]
 path = "src/lib.rs"
+
+[dependencies]
+processkit = { version = "=3.3.4", default-features = false, features = ["process-control"] }
+tokio = { version = "1.49", features = ["rt", "time"] }
+
+[target.'cfg(target_os = "linux")'.dev-dependencies]
+libc = "0.2"

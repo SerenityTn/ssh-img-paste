@@ -51,7 +51,9 @@ Build one contract-first Rust core and CLI for Windows and Linux.
 - Configuration directory discovery and filesystem security.
 - Windows DACL/reparse-point protection.
 - Unix permissions and descriptor-safe path operations.
-- OpenSSH process execution, timeout, and process-tree cleanup.
+- OpenSSH process execution through pinned ProcessKit 3.3.4, with shell-free argv, an end-to-end deadline, cancellation, bounded capture, and a bounded cleanup-confirmation grace.
+- Surface the host containment mechanism. Windows uses a Job Object; Linux prefers cgroup v2 and may fall back to a POSIX process group. The process-group mechanism is accepted only for the fixed validated OpenSSH children and is not an arbitrary-command sandbox: a child deliberately calling `setsid` can escape it.
+- Return structured `Cleanup` rather than `Timeout` or `Cancelled` if the isolated process worker does not finish within the cleanup grace. Kernel kill acceptance cannot make an uninterruptible task disappear synchronously, so do not claim stronger terminal-state guarantees than the OS provides.
 - Clipboard acquisition, snapshot, path writing, guarded restoration, and transaction supersession.
 - Screenshot acquisition and PNG normalization.
 - Notifications and capability diagnostics.

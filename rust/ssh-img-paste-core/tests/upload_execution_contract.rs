@@ -1,6 +1,7 @@
 use ssh_img_paste_core::{
     CommandExecutor, CommandFailure, CommandOutcome, CommandPlan, ExecutionPolicy,
-    UploadExecutionError, UploadPlan, UploadStep, execute_upload_plan,
+    UploadExecutionError, UploadPlan, UploadStep, ValidatedProfile, build_upload_plan,
+    execute_upload_plan,
 };
 use std::time::Duration;
 
@@ -35,30 +36,30 @@ impl CommandExecutor for FailureExecutor {
 }
 
 fn plan() -> UploadPlan {
-    UploadPlan {
-        mkdir: CommandPlan {
-            program: "ssh".into(),
-            arguments: vec!["mkdir".into()],
-        },
-        upload: CommandPlan {
-            program: "scp".into(),
-            arguments: vec!["upload".into()],
-        },
-        finalize: CommandPlan {
-            program: "ssh".into(),
-            arguments: vec!["finalize".into()],
-        },
-        remote_path: "/home/user/img-uploads/result.png".into(),
-    }
+    let profile = ValidatedProfile {
+        label: "Test".into(),
+        host: "test-host".into(),
+        remote_home: "/home/test".into(),
+        remote_dir: "img-uploads".into(),
+        shot_mode: Some("region".into()),
+        restore_seconds: Some("60".into()),
+        editable: true,
+    };
+    let source = if cfg!(windows) {
+        std::path::Path::new(r"C:\Temp\source.png")
+    } else {
+        std::path::Path::new("/tmp/source.png")
+    };
+    build_upload_plan(&profile, source, "result.png").expect("validated test plan")
 }
 
 #[test]
 fn executes_each_upload_step_in_order_and_returns_the_remote_path() {
     let upload = plan();
     let expected_calls = vec![
-        upload.mkdir.clone(),
-        upload.upload.clone(),
-        upload.finalize.clone(),
+        upload.mkdir().clone(),
+        upload.upload().clone(),
+        upload.finalize().clone(),
     ];
     let mut executor = RecordingExecutor::default();
 
@@ -71,7 +72,7 @@ fn executes_each_upload_step_in_order_and_returns_the_remote_path() {
     )
     .expect("upload execution should succeed");
 
-    assert_eq!(result.remote_path, upload.remote_path);
+    assert_eq!(result.remote_path, upload.remote_path());
     assert_eq!(executor.calls, expected_calls);
 }
 
@@ -106,7 +107,10 @@ fn reports_the_failed_step_and_does_not_run_later_steps() {
             },
         }
     );
-    assert_eq!(executor.calls, vec![upload.mkdir, upload.upload]);
+    assert_eq!(
+        executor.calls,
+        vec![upload.mkdir().clone(), upload.upload().clone()]
+    );
 }
 
 #[test]
@@ -129,7 +133,7 @@ fn reports_a_timeout_at_the_step_where_it_occurs() {
 
     assert_eq!(error.step, UploadStep::CreateRemoteDirectory);
     assert_eq!(error.failure, CommandFailure::Timeout);
-    assert_eq!(executor.calls, vec![upload.mkdir]);
+    assert_eq!(executor.calls, vec![upload.mkdir().clone()]);
 }
 
 #[test]
@@ -180,7 +184,10 @@ fn cancellation_stops_the_upload_before_finalize() {
 
     assert_eq!(error.step, UploadStep::Upload);
     assert_eq!(error.failure, CommandFailure::Cancelled);
-    assert_eq!(executor.calls, vec![upload.mkdir, upload.upload]);
+    assert_eq!(
+        executor.calls,
+        vec![upload.mkdir().clone(), upload.upload().clone()]
+    );
 }
 
 #[test]

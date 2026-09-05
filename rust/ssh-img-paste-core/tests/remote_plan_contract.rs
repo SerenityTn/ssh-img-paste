@@ -37,12 +37,12 @@ fn plans_mkdir_partial_upload_and_atomic_finalize_as_argument_arrays() {
         .expect("safe upload plan");
 
     assert_eq!(
-        plan.remote_path,
+        plan.remote_path(),
         "/srv/me/images/clip-20260807-170000-a31f62c8.png"
     );
-    assert_eq!(plan.mkdir.program, "ssh");
+    assert_eq!(plan.mkdir().program(), "ssh");
     assert_eq!(
-        strings(&plan.mkdir.arguments),
+        strings(plan.mkdir().arguments()),
         [
             "-o",
             "BatchMode=yes",
@@ -53,19 +53,19 @@ fn plans_mkdir_partial_upload_and_atomic_finalize_as_argument_arrays() {
         ]
     );
 
-    assert_eq!(plan.upload.program, "scp");
-    let upload = strings(&plan.upload.arguments);
+    assert_eq!(plan.upload().program(), "scp");
+    let upload = strings(plan.upload().arguments());
     assert_eq!(upload[6], "--");
     assert_eq!(upload[7], source.to_string_lossy());
     assert_eq!(
         upload[8],
         "work-host:/srv/me/images/.clip-20260807-170000-a31f62c8.png.partial"
     );
-    assert_eq!(plan.upload.arguments[7], source.as_os_str());
+    assert_eq!(plan.upload().arguments()[7], source.as_os_str());
 
-    assert_eq!(plan.finalize.program, "ssh");
+    assert_eq!(plan.finalize().program(), "ssh");
     assert_eq!(
-        strings(&plan.finalize.arguments)[5],
+        strings(plan.finalize().arguments())[5],
         "mv -- /srv/me/images/.clip-20260807-170000-a31f62c8.png.partial /srv/me/images/clip-20260807-170000-a31f62c8.png"
     );
 }
@@ -108,8 +108,8 @@ fn normalizes_accepted_trailing_remote_separators() {
     let plan = build_upload_plan(&trailing, &local_source("image.png"), "safe.png")
         .expect("normalized upload plan");
 
-    assert_eq!(plan.remote_path, "/srv/me/images/safe.png");
-    assert!(!plan.remote_path.contains("//"));
+    assert_eq!(plan.remote_path(), "/srv/me/images/safe.png");
+    assert!(!plan.remote_path().contains("//"));
 }
 
 #[test]
