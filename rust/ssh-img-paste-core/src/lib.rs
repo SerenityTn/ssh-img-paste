@@ -6,6 +6,9 @@ mod process_executor_tests;
 mod config_root;
 pub use config_root::{ConfigRootError, current_environment, default_config_root};
 
+mod source_file;
+pub use source_file::{SourceFileError, generate_remote_name, open_upload_source};
+
 mod profile_store;
 pub use profile_store::{
     DiscoveredProfile, ProfileCatalog, ProfileSelection, ProfileStoreError, SelectedProfile,

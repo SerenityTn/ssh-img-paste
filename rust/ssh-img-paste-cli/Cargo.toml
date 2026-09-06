@@ -7,9 +7,15 @@ license = "MIT"
 rust-version = "1.92"
 
 [dependencies]
+ctrlc = { version = "=3.5.2", features = ["termination"] }
+getrandom = "=0.3.4"
 serde_json = "1"
 ssh-img-paste-core = { path = "../ssh-img-paste-core" }
+tempfile = "=3.27.0"
 
 [[bin]]
 name = "ssh-img-paste"
 path = "src/main.rs"
+
+[target.'cfg(unix)'.dev-dependencies]
+libc = "0.2"

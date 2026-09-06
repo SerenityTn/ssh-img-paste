@@ -43,6 +43,230 @@ fn assert_structured_error(output: &Output, exit_code: i32, error_code: &str) {
     );
 }
 
+#[cfg(unix)]
+#[test]
+fn interrupt_cancels_upload_and_removes_private_staging() {
+    use std::os::unix::fs::PermissionsExt;
+    use std::os::unix::process::ExitStatusExt;
+    use std::time::{Duration, Instant};
+
+    let root = temporary_catalog();
+    write_profile(&root, "alpha", "Alpha", "alpha@example.test");
+    let source = root.join("source.png");
+    std::fs::write(&source, b"\x89PNG\r\n\x1a\nbytes").expect("source image");
+    let bin = root.join("cancel bin");
+    std::fs::create_dir(&bin).expect("fake OpenSSH bin");
+    let staging_path_log = root.join("staging-path.log");
+    let ssh = bin.join("ssh");
+    std::fs::write(&ssh, "#!/bin/sh\nexit 0\n").expect("fake ssh");
+    std::fs::set_permissions(&ssh, std::fs::Permissions::from_mode(0o700)).expect("ssh mode");
+    let scp = bin.join("scp");
+    std::fs::write(
+        &scp,
+        "#!/bin/sh\nprintf '%s' \"$8\" > \"$STAGING_PATH_LOG\"\n/bin/sleep 10\n",
+    )
+    .expect("fake scp");
+    std::fs::set_permissions(&scp, std::fs::Permissions::from_mode(0o700)).expect("scp mode");
+
+    let child = Command::new(env!("CARGO_BIN_EXE_ssh-img-paste"))
+        .arg("--config-root")
+        .arg(&root)
+        .args(["upload-file", "--source"])
+        .arg(&source)
+        .args(["--profile", "alpha", "--confirm-profile", "alpha"])
+        .env("PATH", &bin)
+        .env("STAGING_PATH_LOG", &staging_path_log)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("spawn upload CLI");
+    let deadline = Instant::now() + Duration::from_secs(3);
+    while !staging_path_log.exists() && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert!(staging_path_log.exists(), "upload did not reach scp");
+    let staging_path =
+        PathBuf::from(std::fs::read_to_string(&staging_path_log).expect("recorded staging path"));
+    let signal_result = unsafe { libc::kill(child.id() as i32, libc::SIGINT) };
+    assert_eq!(signal_result, 0, "send interrupt");
+    let output = child.wait_with_output().expect("cancelled CLI output");
+
+    assert!(
+        output.status.code().is_some(),
+        "CLI must handle SIGINT instead of dying by signal: {:?}",
+        output.status.signal()
+    );
+    assert_structured_error(&output, 3, "upload_failed");
+    let value: Value = serde_json::from_slice(&output.stdout).expect("error JSON");
+    assert_eq!(value["error"]["reason"], "cancelled");
+    assert!(
+        !staging_path.exists(),
+        "staging file remained after cancellation"
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[cfg(unix)]
+#[test]
+fn upload_stages_validated_bytes_before_the_original_path_can_change() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let root = temporary_catalog();
+    write_profile(&root, "alpha", "Alpha", "alpha@example.test");
+    let original_bytes = b"\x89PNG\r\n\x1a\nvalidated bytes";
+    let source = root.join("replaceable.png");
+    std::fs::write(&source, original_bytes).expect("source image");
+    let bin = root.join("race bin");
+    std::fs::create_dir(&bin).expect("fake OpenSSH bin");
+    let marker = root.join("replaced.marker");
+    let captured = root.join("captured-source.bin");
+    let staging_path_log = root.join("staging-path.log");
+    let ssh_script = "#!/bin/sh\nif [ ! -e \"$RACE_MARKER\" ]; then\n  printf 'replacement bytes' > \"$ORIGINAL_SOURCE\"\n  printf done > \"$RACE_MARKER\"\nfi\nexit 0\n";
+    let scp_script = "#!/bin/sh\n/bin/cp \"$8\" \"$CAPTURED_SOURCE\"\nprintf '%s' \"$8\" > \"$STAGING_PATH_LOG\"\nexit 0\n";
+    for (program, script) in [("ssh", ssh_script), ("scp", scp_script)] {
+        let path = bin.join(program);
+        std::fs::write(&path, script).expect("fake OpenSSH program");
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700))
+            .expect("fake executable permissions");
+    }
+
+    let output = Command::new(env!("CARGO_BIN_EXE_ssh-img-paste"))
+        .arg("--config-root")
+        .arg(&root)
+        .args(["upload-file", "--source"])
+        .arg(&source)
+        .args(["--profile", "alpha", "--confirm-profile", "alpha"])
+        .env("PATH", &bin)
+        .env("RACE_MARKER", &marker)
+        .env("ORIGINAL_SOURCE", &source)
+        .env("CAPTURED_SOURCE", &captured)
+        .env("STAGING_PATH_LOG", &staging_path_log)
+        .output()
+        .expect("run upload CLI");
+
+    assert!(output.status.success(), "{output:?}");
+    assert_eq!(
+        std::fs::read(&captured).expect("captured bytes"),
+        original_bytes
+    );
+    assert_eq!(
+        std::fs::read(&source).expect("replaced original"),
+        b"replacement bytes"
+    );
+    let staging_path =
+        PathBuf::from(std::fs::read_to_string(staging_path_log).expect("recorded staging path"));
+    assert_ne!(staging_path, source);
+    assert!(
+        !staging_path.exists(),
+        "staging file must be removed on return"
+    );
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[cfg(unix)]
+#[test]
+fn upload_file_executes_the_sealed_plan_and_returns_only_the_remote_path() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let root = temporary_catalog();
+    write_profile(&root, "alpha", "Alpha", "alpha@example.test");
+    let source = root.join("source image.png");
+    std::fs::write(&source, b"\x89PNG\r\n\x1a\nimage bytes").expect("source image");
+    let bin = root.join("bin");
+    std::fs::create_dir(&bin).expect("fake OpenSSH bin");
+    let log = root.join("argv.log");
+    let script = "#!/bin/sh\nprintf '%s\\n' \"${0##*/}\" >> \"$SSH_IMG_PASTE_TEST_LOG\"\nexit 0\n";
+    for program in ["ssh", "scp"] {
+        let path = bin.join(program);
+        std::fs::write(&path, script).expect("fake OpenSSH program");
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700))
+            .expect("fake executable permissions");
+    }
+
+    let output = Command::new(env!("CARGO_BIN_EXE_ssh-img-paste"))
+        .arg("--config-root")
+        .arg(&root)
+        .args(["upload-file", "--source"])
+        .arg(&source)
+        .args(["--profile", "alpha", "--confirm-profile", "alpha"])
+        .env("PATH", &bin)
+        .env("SSH_IMG_PASTE_TEST_LOG", &log)
+        .output()
+        .expect("run upload CLI");
+
+    assert!(output.status.success(), "{output:?}");
+    assert!(output.stderr.is_empty());
+    let value: Value = serde_json::from_slice(&output.stdout).expect("single JSON document");
+    assert_eq!(value["protocol_version"], 1);
+    assert_eq!(value["ok"], true);
+    assert_eq!(value["result"]["type"], "upload");
+    assert_eq!(value["result"]["profile_id"], "alpha");
+    let remote_path = value["result"]["remote_path"]
+        .as_str()
+        .expect("remote path");
+    assert!(remote_path.starts_with("/home/user/img-uploads/ssh-img-"));
+    assert!(remote_path.ends_with(".png"));
+    assert_eq!(
+        std::fs::read_to_string(log).expect("argv log"),
+        "ssh\nscp\nssh\n"
+    );
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn upload_rejects_a_missing_source_before_spawning_openssh() {
+    let root = temporary_catalog();
+    write_profile(&root, "alpha", "Alpha", "alpha@example.test");
+
+    let output = run(
+        &root,
+        &[
+            "upload-file",
+            "--source",
+            if cfg!(target_os = "windows") {
+                r"C:\definitely-missing-ssh-img-paste.png"
+            } else {
+                "/definitely-missing-ssh-img-paste.png"
+            },
+            "--profile",
+            "alpha",
+            "--confirm-profile",
+            "alpha",
+        ],
+    );
+
+    assert_structured_error(&output, 3, "source_not_found");
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn upload_requires_matching_explicit_target_confirmation_before_execution() {
+    let root = temporary_catalog();
+    write_profile(&root, "alpha", "Alpha", "alpha@example.test");
+
+    let output = run(
+        &root,
+        &[
+            "upload-file",
+            "--source",
+            if cfg!(target_os = "windows") {
+                r"C:\missing.png"
+            } else {
+                "/missing.png"
+            },
+            "--profile",
+            "alpha",
+            "--confirm-profile",
+            "other",
+        ],
+    );
+
+    assert_structured_error(&output, 2, "profile_confirmation_mismatch");
+    let _ = std::fs::remove_dir_all(root);
+}
+
 #[test]
 fn misplaced_global_config_option_is_rejected_as_structured_json() {
     let root = temporary_catalog();
