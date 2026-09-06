@@ -100,7 +100,8 @@ fn open_absolute_nofollow(path: &Path) -> std::io::Result<File> {
     {
         use cap_primitives::fs::OpenOptionsExt;
         const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
-        options.custom_flags(FILE_FLAG_OPEN_REPARSE_POINT);
+        const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x0200_0000;
+        options.custom_flags(FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS);
     }
     cap_primitives::fs::open(&directory, Path::new(file_name), &options)
 }
