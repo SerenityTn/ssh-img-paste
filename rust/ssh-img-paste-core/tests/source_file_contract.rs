@@ -80,6 +80,48 @@ fn symlink_source_is_not_followed() {
     let _ = std::fs::remove_dir_all(root);
 }
 
+#[cfg(windows)]
+#[test]
+fn windows_final_directory_junction_is_rejected_as_a_reparse_point() {
+    let root = temporary_root();
+    let target = root.join("junction-target");
+    std::fs::create_dir(&target).expect("junction target");
+    let junction = root.join("linked-source.png");
+    let output = std::process::Command::new("cmd")
+        .args(["/c", "mklink", "/J"])
+        .arg(&junction)
+        .arg(&target)
+        .output()
+        .expect("create directory junction");
+    assert!(output.status.success(), "{output:?}");
+
+    assert!(matches!(
+        open_upload_source(&junction),
+        Err(SourceFileError::ReparsePoint)
+    ));
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[cfg(windows)]
+#[test]
+fn windows_parent_directory_junction_is_not_followed() {
+    let root = temporary_root();
+    let target = root.join("junction-parent-target");
+    std::fs::create_dir(&target).expect("junction target");
+    std::fs::write(target.join("image.png"), b"\x89PNG\r\n\x1a\nbytes").expect("target PNG");
+    let junction = root.join("linked-parent");
+    let output = std::process::Command::new("cmd")
+        .args(["/c", "mklink", "/J"])
+        .arg(&junction)
+        .arg(&target)
+        .output()
+        .expect("create parent junction");
+    assert!(output.status.success(), "{output:?}");
+
+    assert!(open_upload_source(&junction.join("image.png")).is_err());
+    let _ = std::fs::remove_dir_all(root);
+}
+
 #[cfg(unix)]
 #[test]
 fn source_with_a_symlinked_parent_is_not_followed() {

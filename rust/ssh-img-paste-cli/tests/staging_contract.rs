@@ -35,6 +35,29 @@ impl Read for CancellingReader {
 }
 
 #[test]
+fn completed_staging_can_be_reopened_by_the_upload_process() {
+    let directory = temporary_directory();
+    let token = CancellationToken::new();
+    let bytes = b"\x89PNG\r\n\x1a\nstaged bytes";
+    let mut source = std::io::Cursor::new(bytes);
+
+    let staged = stage_upload_source(&mut source, &token, &directory).expect("stage source");
+
+    assert_eq!(
+        std::fs::read(staged.path()).expect("reopen staged file"),
+        bytes
+    );
+    drop(staged);
+    assert_eq!(
+        std::fs::read_dir(&directory)
+            .expect("list staging directory")
+            .count(),
+        0
+    );
+    let _ = std::fs::remove_dir_all(directory);
+}
+
+#[test]
 fn cancellation_during_copy_removes_the_partially_staged_image() {
     let directory = temporary_directory();
     let token = CancellationToken::new();
