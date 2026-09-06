@@ -3,6 +3,9 @@
 #[cfg(test)]
 mod process_executor_tests;
 
+mod config_root;
+pub use config_root::{ConfigRootError, current_environment, default_config_root};
+
 mod profile_store;
 pub use profile_store::{
     DiscoveredProfile, ProfileCatalog, ProfileSelection, ProfileStoreError, SelectedProfile,
