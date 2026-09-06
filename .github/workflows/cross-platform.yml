@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feat/cross-platform-core
+      - feat/production-rust-cli
   pull_request:
     paths:
       - "xplat/**"
@@ -46,6 +47,8 @@ jobs:
         run: ./tests/test-cross-platform-contract.sh
       - name: Run Rust contract tests
         run: cargo test --locked --manifest-path rust/ssh-img-paste-core/Cargo.toml
+      - name: Run production Rust CLI contract tests
+        run: cargo test --locked --manifest-path rust/ssh-img-paste-cli/Cargo.toml --all-targets
       - name: Run Python tracer tests
         run: python -m unittest tests.test_xplat -v
       - name: Run Ubuntu X11 and SCP end-to-end test
