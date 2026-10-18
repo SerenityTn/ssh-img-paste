@@ -38,3 +38,16 @@ jobs:
           dotnet run --project windows/SSHImagePaste.Windows.ContractTests/SSHImagePaste.Windows.ContractTests.csproj --configuration Release
       - name: Build the WPF desktop app
         run: dotnet build windows/SSHImagePaste.Windows/SSHImagePaste.Windows.csproj --configuration Release
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+      - name: Build the installer and portable zip
+        shell: pwsh
+        run: ./windows/installer/build-installer.ps1 -SkipCli -Iscc "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+      - name: Upload the installer and portable zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: ssh-img-paste-windows-x64
+          path: |
+            windows/artifacts/SSHImagePaste-Setup-*.exe
+            windows/artifacts/SSHImagePaste-*-portable.zip
+          if-no-files-found: error

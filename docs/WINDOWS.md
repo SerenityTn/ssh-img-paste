@@ -27,19 +27,33 @@ The desktop app is a thin shell. A bundled Rust command-line tool, `ssh-img-past
 
 - On the host: a POSIX shell and GNU `find` for listing uploads, which any common Linux distribution provides.
 
-## Install from source
+## Install
 
-Signed installers are not published yet. To build and install for your user account, you need the [.NET 10 SDK](https://dotnet.microsoft.com/download) and [Rust](https://rustup.rs) 1.92 or newer.
+Run `SSHImagePaste-Setup-<version>-x64.exe`. It installs for your account only, without administrator rights, into `%LOCALAPPDATA%\Programs\SSH Image Paste`. It adds a Start menu entry, can start the app when you sign in, and registers an uninstaller under **Settings > Apps**. Running a newer setup upgrades in place and closes the running app first.
+
+The installer is not code-signed yet, so Windows SmartScreen may say it "protected your PC". Choose **More info**, then **Run anyway**.
+
+A portable zip is also built. Extract it anywhere and run `SSHImagePaste.exe`. Nothing is registered, but the app still offers **Start when I sign in**.
+
+Uninstalling removes the app and its sign-in entry. Your destinations in `%LOCALAPPDATA%\SSH Image Paste` are kept.
+
+Silent install for scripted setups:
+
+```powershell
+.\SSHImagePaste-Setup-<version>-x64.exe /VERYSILENT /TASKS=startup
+```
+
+### Build the installer from source
+
+You need the [.NET 10 SDK](https://dotnet.microsoft.com/download), [Rust](https://rustup.rs) 1.92 or newer, and [Inno Setup 6](https://jrsoftware.org/isinfo.php), for example `winget install JRSoftware.InnoSetup --scope user`.
 
 ```powershell
 git clone https://github.com/SerenityTn/ssh-img-paste.git
 cd ssh-img-paste
-cargo build --release --locked --manifest-path rust/ssh-img-paste-cli/Cargo.toml
-dotnet publish windows/SSHImagePaste.Windows -c Release -r win-x64 --self-contained -o "$env:LOCALAPPDATA\Programs\SSH Image Paste"
-& "$env:LOCALAPPDATA\Programs\SSH Image Paste\SSHImagePaste.exe"
+.\windows\installer\build-installer.ps1
 ```
 
-The publish step copies the CLI next to the app. To start the app at sign-in, select **Start when I sign in** in the main window.
+The setup and the portable zip land in `windows\artifacts`. Each Windows CI run also attaches them as the `ssh-img-paste-windows-x64` artifact.
 
 ## First run
 

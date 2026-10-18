@@ -424,7 +424,7 @@ dependencies = [
 
 [[package]]
 name = "ssh-img-paste-cli"
-version = "0.1.0-dev"
+version = "0.1.0"
 dependencies = [
  "ctrlc",
  "getrandom 0.3.4",
@@ -436,7 +436,7 @@ dependencies = [
 
 [[package]]
 name = "ssh-img-paste-core"
-version = "0.1.0-dev"
+version = "0.1.0"
 dependencies = [
  "cap-primitives",
  "cap-std",

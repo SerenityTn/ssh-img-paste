@@ -27,6 +27,7 @@ Build one contract-first Rust core and CLI for Windows and Linux.
 - WIC for clipboard-image normalization and PNG encoding.
 - Owned per-monitor selection overlay plus GDI capture for the first region-capture implementation.
 - Self-contained x64/arm64 MSIX artifacts; signing is release-gated.
+- Until a code-signing certificate exists, ship a self-contained x64 per-user Inno Setup installer and a portable zip (`windows/installer`). Unsigned MSIX packages cannot be installed by ordinary users.
 
 ### Linux
 
