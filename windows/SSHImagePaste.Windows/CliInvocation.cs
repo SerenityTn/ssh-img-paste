@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text;
 
 namespace SSHImagePaste.Windows;
 
@@ -13,8 +14,11 @@ public static class CliInvocation
             FileName = executable,
             UseShellExecute = false,
             CreateNoWindow = true,
+            RedirectStandardInput = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
+            StandardOutputEncoding = Encoding.UTF8,
+            StandardErrorEncoding = Encoding.UTF8,
         };
         foreach (var argument in arguments)
         {

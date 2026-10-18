@@ -1,114 +1,81 @@
 using System.Windows;
-using Forms = System.Windows.Forms;
+using System.Windows.Threading;
+using SSHImagePaste.Windows.Platform;
 
 namespace SSHImagePaste.Windows;
 
 public partial class App : System.Windows.Application
 {
-    private Forms.NotifyIcon? trayIcon;
-    private Forms.ContextMenuStrip? trayMenu;
-    private MainWindow? window;
-    private bool trayAvailable;
+    private SingleInstance? instance;
+    private AppController? controller;
     private bool shuttingDown;
 
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
-
-        window = new MainWindow(() => trayAvailable, ShutdownApplication);
-        MainWindow = window;
-        window.Show();
-
-        try
+        DispatcherUnhandledException += OnUnhandledException;
+        AppDomain.CurrentDomain.UnhandledException += (_, args) =>
+            Log.Error("Unhandled exception", args.ExceptionObject as Exception);
+        TaskScheduler.UnobservedTaskException += (_, args) =>
         {
-            trayMenu = BuildTrayMenu();
-            trayIcon = new Forms.NotifyIcon
-            {
-                Text = "SSH Image Paste",
-                Icon = System.Drawing.SystemIcons.Application,
-                ContextMenuStrip = trayMenu,
-                Visible = true,
-            };
-            trayAvailable = true;
-            trayIcon.DoubleClick += (_, _) => Dispatch(TrayInteraction.ActionForDoubleClick());
-        }
-        catch (Exception)
+            Log.Error("Unobserved task exception", args.Exception);
+            args.SetObserved();
+        };
+
+        instance = SingleInstance.TryAcquire(() => Dispatcher.BeginInvoke(() => controller?.ShowMain()));
+        if (instance is null)
         {
-            DisposeTray();
-            window.ReportTrayUnavailable();
+            Shutdown();
+            return;
         }
+
+        System.Windows.Forms.Integration.WindowsFormsHost.EnableWindowsFormsInterop();
+        System.Windows.Forms.Application.EnableVisualStyles();
+        var background = e.Args.Contains(StartupRegistration.BackgroundArgument, StringComparer.OrdinalIgnoreCase);
+        Log.Info($"Starting {AppPaths.ProductName} {typeof(App).Assembly.GetName().Version} (background: {background}, packaged: {StartupRegistration.IsPackaged})");
+        controller = new AppController(Dispatcher, ShutdownApplication);
+        controller.Start(background);
     }
 
-    private Forms.ContextMenuStrip BuildTrayMenu()
+    private void OnUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
     {
-        var menu = new Forms.ContextMenuStrip();
-        foreach (var action in TrayMenuModel.PrimaryActions)
-        {
-            if (action is DesktopAction.UploadClipboard or DesktopAction.ManageProfiles or DesktopAction.Quit)
-            {
-                menu.Items.Add(new Forms.ToolStripSeparator());
-            }
-            var item = new Forms.ToolStripMenuItem(TrayMenuModel.Label(action))
-            {
-                Enabled = action is DesktopAction.OpenWindow or DesktopAction.Quit,
-            };
-            item.Click += (_, _) => Dispatch(action);
-            menu.Items.Add(item);
-        }
-        return menu;
+        Log.Error("UI exception", e.Exception);
+        e.Handled = true;
+        System.Windows.MessageBox.Show(
+            $"Something went wrong: {e.Exception.Message}\n\nDetails were written to {Log.FilePath}.",
+            AppPaths.ProductName,
+            MessageBoxButton.OK,
+            MessageBoxImage.Warning);
     }
 
-    private void Dispatch(DesktopAction action)
-    {
-        if (window is null)
-        {
-            return;
-        }
-        if (action == DesktopAction.Quit)
-        {
-            ShutdownApplication();
-            return;
-        }
-        if (action == DesktopAction.OpenWindow)
-        {
-            window.ShowAndActivate();
-            return;
-        }
-        if (action == DesktopAction.ManageProfiles)
-        {
-            window.ShowAndActivate();
-        }
-        window.ReportAction(action);
-    }
-
-    private void ShutdownApplication()
+    public void ShutdownApplication()
     {
         if (shuttingDown)
         {
             return;
         }
         shuttingDown = true;
-        DisposeTray();
-        window?.CloseForShutdown();
-        Shutdown();
-    }
-
-    private void DisposeTray()
-    {
-        trayAvailable = false;
-        if (trayIcon is not null)
+        foreach (var window in Windows.OfType<Window>().ToList())
         {
-            trayIcon.Visible = false;
-            trayIcon.Dispose();
-            trayIcon = null;
+            if (window is MainWindow main)
+            {
+                main.CloseForShutdown();
+            }
+            else
+            {
+                window.Close();
+            }
         }
-        trayMenu?.Dispose();
-        trayMenu = null;
+        controller?.Dispose();
+        controller = null;
+        Shutdown();
     }
 
     protected override void OnExit(ExitEventArgs e)
     {
-        DisposeTray();
+        controller?.Dispose();
+        instance?.Dispose();
+        Log.Info("Exited");
         base.OnExit(e);
     }
 }

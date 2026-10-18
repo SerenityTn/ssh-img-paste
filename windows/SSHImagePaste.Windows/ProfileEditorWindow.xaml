@@ -1,0 +1,78 @@
+<Window x:Class="SSHImagePaste.Windows.ProfileEditorWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Destination" Width="560" SizeToContent="Height" ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+        Icon="pack://application:,,,/Assets/AppIcon.ico">
+    <StackPanel Margin="24,18,24,20">
+        <TextBlock x:Name="Heading" FontSize="20" FontWeight="SemiBold" AutomationProperties.HeadingLevel="Level1" />
+
+        <TextBlock Text="Display name" Style="{StaticResource FieldLabel}" />
+        <TextBox x:Name="LabelBox" TextChanged="Field_Changed" AutomationProperties.Name="Display name" />
+        <TextBlock x:Name="LabelError" Style="{StaticResource FieldError}" Visibility="Collapsed" />
+
+        <StackPanel x:Name="IdPanel">
+            <TextBlock Text="Profile ID" Style="{StaticResource FieldLabel}" />
+            <TextBox x:Name="IdBox" TextChanged="Id_Changed" AutomationProperties.Name="Profile ID" />
+            <TextBlock x:Name="IdError" Style="{StaticResource FieldError}" Visibility="Collapsed" />
+            <TextBlock Style="{StaticResource FieldHint}" Text="Letters, digits, dashes, and underscores. Used as the profile file name." />
+        </StackPanel>
+
+        <TextBlock Text="SSH host or alias" Style="{StaticResource FieldLabel}" />
+        <TextBox x:Name="HostBox" TextChanged="Field_Changed" FontFamily="Cascadia Mono, Consolas"
+                 AutomationProperties.Name="SSH host or alias" />
+        <TextBlock x:Name="HostError" Style="{StaticResource FieldError}" Visibility="Collapsed" />
+        <TextBlock Style="{StaticResource FieldHint}">
+            <Run Text="A Host alias from" />
+            <Hyperlink Click="OpenSshConfig_Click"><Run x:Name="SshConfigRun" /></Hyperlink>
+            <Run Text="or user@host. Keep ports, keys, and jump hosts in the SSH config." />
+        </TextBlock>
+
+        <TextBlock Text="Remote home" Style="{StaticResource FieldLabel}" />
+        <DockPanel>
+            <Button x:Name="DetectButton" Content="De_tect" DockPanel.Dock="Right" Margin="8,0,0,0" MinWidth="88"
+                    Click="Detect_Click" AutomationProperties.Name="Detect remote home"
+                    AutomationProperties.HelpText="Connects to the host and reads its home directory." />
+            <TextBox x:Name="HomeBox" TextChanged="Field_Changed" FontFamily="Cascadia Mono, Consolas"
+                     AutomationProperties.Name="Remote home" />
+        </DockPanel>
+        <TextBlock x:Name="HomeError" Style="{StaticResource FieldError}" Visibility="Collapsed" />
+        <TextBlock Style="{StaticResource FieldHint}" Text="The SSH account's absolute home directory on the host, such as /home/me." />
+
+        <TextBlock Text="Upload folder" Style="{StaticResource FieldLabel}" />
+        <TextBox x:Name="DirBox" TextChanged="Field_Changed" FontFamily="Cascadia Mono, Consolas"
+                 AutomationProperties.Name="Upload folder" />
+        <TextBlock x:Name="DirError" Style="{StaticResource FieldError}" Visibility="Collapsed" />
+        <TextBlock x:Name="DirHint" Style="{StaticResource FieldHint}" />
+
+        <Grid Margin="0,4,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition />
+                <ColumnDefinition Width="16" />
+                <ColumnDefinition />
+            </Grid.ColumnDefinitions>
+            <StackPanel Grid.Column="0">
+                <TextBlock Text="When the clipboard has no image" Style="{StaticResource FieldLabel}" />
+                <ComboBox x:Name="ShotModeBox" AutomationProperties.Name="When the clipboard has no image">
+                    <ComboBoxItem Content="Capture a region" Tag="region" />
+                    <ComboBoxItem Content="Capture the full screen" Tag="full" />
+                </ComboBox>
+            </StackPanel>
+            <StackPanel Grid.Column="2">
+                <TextBlock Text="Restore clipboard after (seconds)" Style="{StaticResource FieldLabel}" />
+                <TextBox x:Name="RestoreBox" TextChanged="Field_Changed" AutomationProperties.Name="Restore clipboard after, in seconds" />
+                <TextBlock x:Name="RestoreError" Style="{StaticResource FieldError}" Visibility="Collapsed" />
+                <TextBlock Style="{StaticResource FieldHint}" Text="0 keeps the path on the clipboard." />
+            </StackPanel>
+        </Grid>
+
+        <TextBlock x:Name="StatusText" Margin="0,16,0,0" TextWrapping="Wrap" Visibility="Collapsed"
+                   AutomationProperties.Name="Status" AutomationProperties.LiveSetting="Assertive" />
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,20,0,0">
+            <Button x:Name="SaveButton" Content="_Save" MinWidth="96" IsDefault="True" Click="Save_Click"
+                    Style="{DynamicResource AccentButtonStyle}" />
+            <Button Content="Cancel" MinWidth="96" Margin="8,0,0,0" IsCancel="True" />
+        </StackPanel>
+    </StackPanel>
+</Window>
