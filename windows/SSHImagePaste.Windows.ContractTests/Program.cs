@@ -207,6 +207,15 @@ public static class Program
             "selections on monitors left of the primary map into capture coordinates");
         Check(SelectionGeometry.ToCapture(new System.Drawing.Rectangle(1900, 1070, 100, 100), virtualScreen) == new System.Drawing.Rectangle(3820, 1070, 20, 10),
             "selections are clipped to the virtual screen");
+
+        // Exercise the real GDI capture path used by region and full-screen uploads.
+        var monitor = ScreenCapture.CurrentMonitorBounds;
+        var area = new System.Drawing.Rectangle(monitor.X, monitor.Y, Math.Min(64, monitor.Width), Math.Min(48, monitor.Height));
+        using var captured = ScreenCapture.Capture(area);
+        Check(captured.Width == area.Width && captured.Height == area.Height, "screen capture must return the requested pixel size");
+        using var cropped = ScreenCapture.Crop(captured, new System.Drawing.Rectangle(10, 10, 20, 15));
+        Check(cropped.Width == 20 && cropped.Height == 15, "cropping a capture must keep the selection size");
+        Check(PngEncoding.IsPng(PngEncoding.Encode(cropped)), "a cropped capture must encode as PNG");
     }
 
     private static void ErrorMessageContracts()

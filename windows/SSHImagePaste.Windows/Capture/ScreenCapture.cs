@@ -20,12 +20,30 @@ public static class ScreenCapture
         var bitmap = new Bitmap(bounds.Width, bounds.Height, System.Drawing.Imaging.PixelFormat.Format32bppRgb);
         try
         {
+            // Graphics.CopyFromScreen rejects SourceCopy | CaptureBlt, so blit directly.
+            // CAPTUREBLT includes layered windows such as menus and tooltips.
             using var graphics = Graphics.FromImage(bitmap);
-            graphics.CopyFromScreen(
-                bounds.Location,
-                Point.Empty,
-                bounds.Size,
-                CopyPixelOperation.SourceCopy | CopyPixelOperation.CaptureBlt);
+            var destination = graphics.GetHdc();
+            var screen = Platform.NativeMethods.GetDC(IntPtr.Zero);
+            try
+            {
+                if (screen == IntPtr.Zero
+                    || !Platform.NativeMethods.BitBlt(
+                        destination, 0, 0, bounds.Width, bounds.Height,
+                        screen, bounds.X, bounds.Y,
+                        Platform.NativeMethods.SrcCopy | Platform.NativeMethods.CaptureBlt))
+                {
+                    throw new System.ComponentModel.Win32Exception(System.Runtime.InteropServices.Marshal.GetLastPInvokeError(), "The screen could not be captured.");
+                }
+            }
+            finally
+            {
+                if (screen != IntPtr.Zero)
+                {
+                    Platform.NativeMethods.ReleaseDC(IntPtr.Zero, screen);
+                }
+                graphics.ReleaseHdc(destination);
+            }
             return bitmap;
         }
         catch
