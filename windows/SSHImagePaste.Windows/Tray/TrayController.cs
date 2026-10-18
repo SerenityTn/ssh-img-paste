@@ -22,6 +22,7 @@ public sealed class TrayController : IDisposable
     private readonly Dictionary<DesktopAction, Forms.ToolStripMenuItem> actionItems = [];
     private readonly Dictionary<TrayState, System.Drawing.Icon> icons = [];
     private readonly System.Windows.Threading.DispatcherTimer revertTimer;
+    private readonly System.Windows.Threading.DispatcherTimer clickTimer;
     private ProfileCatalog? catalog;
     private bool busy;
 
@@ -57,7 +58,33 @@ public sealed class TrayController : IDisposable
             ContextMenuStrip = menu,
             Visible = true,
         };
-        icon.DoubleClick += (_, _) => ActionRequested?.Invoke(this, TrayInteraction.ActionForDoubleClick());
+        // A double-click arrives as a click and then a double-click, so a single
+        // click waits for the double-click time before it uploads.
+        clickTimer = new System.Windows.Threading.DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(Forms.SystemInformation.DoubleClickTime),
+        };
+        clickTimer.Tick += (_, _) =>
+        {
+            clickTimer.Stop();
+            ActionRequested?.Invoke(this, TrayInteraction.ActionForSingleLeftClick());
+        };
+        icon.MouseClick += (_, args) =>
+        {
+            if (args.Button == Forms.MouseButtons.Left)
+            {
+                clickTimer.Stop();
+                clickTimer.Start();
+            }
+        };
+        icon.MouseDoubleClick += (_, args) =>
+        {
+            if (args.Button == Forms.MouseButtons.Left)
+            {
+                clickTimer.Stop();
+                ActionRequested?.Invoke(this, TrayInteraction.ActionForDoubleClick());
+            }
+        };
         icon.BalloonTipClicked += (_, _) => ActionRequested?.Invoke(this, DesktopAction.OpenWindow);
 
         revertTimer = new System.Windows.Threading.DispatcherTimer { Interval = TransientStateDuration };
@@ -174,6 +201,7 @@ public sealed class TrayController : IDisposable
     public void Dispose()
     {
         revertTimer.Stop();
+        clickTimer.Stop();
         icon.Visible = false;
         icon.Dispose();
         menu.Dispose();
