@@ -5,6 +5,7 @@ on:
     branches:
       - feat/cross-platform-core
       - feat/production-rust-cli
+      - feat/windows-desktop-app
   pull_request:
     paths:
       - "xplat/**"
