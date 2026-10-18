@@ -11,8 +11,22 @@ pub use source_file::{SourceFileError, generate_remote_name, open_upload_source}
 
 mod profile_store;
 pub use profile_store::{
-    DiscoveredProfile, ProfileCatalog, ProfileSelection, ProfileStoreError, SelectedProfile,
-    discover_profiles, resolve_profile,
+    CatalogEntry, CatalogEntryStatus, CatalogInspection, DiscoveredProfile, ProfileCatalog,
+    ProfileSelection, ProfileStoreError, SelectedProfile, UnusableReason, discover_profiles,
+    inspect_catalog, resolve_profile,
+};
+
+mod profile_mutation;
+pub use profile_mutation::{
+    CreateOutcome, DeleteOutcome, MutationError, ProfileFields, RenameOutcome, create_profile,
+    delete_profile, rename_profile, set_active_profile, update_profile,
+};
+
+mod remote_ops;
+pub use remote_ops::{
+    MAX_LISTED_UPLOADS, ProbeOutputError, RemoteListing, RemoteUpload, build_clean_plan,
+    build_fetch_plan, build_list_plan, build_probe_plan, parse_clean_output, parse_listing,
+    parse_probe_output, remote_upload_root, valid_upload_name,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -474,6 +488,7 @@ impl ProcessExecutor {
 enum ProcessWorkerOutcome {
     Exited {
         status: std::process::ExitStatus,
+        stdout: Vec<u8>,
         stderr: Vec<u8>,
     },
     Spawn(processkit::Error),
@@ -789,11 +804,11 @@ async fn run_grouped_process(
     }
 
     let reader_result = finish_process_readers(stdout_reader, stderr_reader).await;
-    let stderr = match reader_result {
-        Ok((_stdout, stderr)) => stderr,
+    let (stdout, stderr) = match reader_result {
+        Ok(output) => output,
         Err(message) => {
             cleanup_issues.push(message);
-            Vec::new()
+            (Vec::new(), Vec::new())
         }
     };
     drop(group);
@@ -806,6 +821,7 @@ async fn run_grouped_process(
     } else {
         ProcessWorkerOutcome::Exited {
             status: status.expect("drained process must be reaped"),
+            stdout,
             stderr,
         }
     }
@@ -813,20 +829,34 @@ async fn run_grouped_process(
 
 impl CommandExecutor for ProcessExecutor {
     fn execute(&mut self, command: &CommandPlan, timeout: std::time::Duration) -> CommandOutcome {
+        self.execute_capturing(command, timeout).0
+    }
+}
+
+impl ProcessExecutor {
+    /// Runs a validated plan and returns its outcome plus bounded stdout.
+    ///
+    /// Stdout is only populated for a successful exit; every failure path
+    /// returns an empty buffer so callers never act on partial output.
+    fn execute_capturing(
+        &mut self,
+        command: &CommandPlan,
+        timeout: std::time::Duration,
+    ) -> (CommandOutcome, Vec<u8>) {
         const POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(5);
         const CLEANUP_GRACE: std::time::Duration = std::time::Duration::from_secs(2);
         const CAPTURE_LIMIT: usize = 64 * 1024;
 
         if timeout.is_zero() {
-            return CommandOutcome::Failure(CommandFailure::Timeout);
+            return (CommandOutcome::Failure(CommandFailure::Timeout), Vec::new());
         }
         if self.cancellation.is_cancelled() {
-            return CommandOutcome::Failure(CommandFailure::Cancelled);
+            return (CommandOutcome::Failure(CommandFailure::Cancelled), Vec::new());
         }
 
         let started_at = std::time::Instant::now();
         let deadline = started_at.checked_add(timeout);
-        let program = command.program.clone();
+        let program = resolve_openssh_program(&command.program);
         let arguments = command.arguments.clone();
         let stop_requested = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let worker_stop = stop_requested.clone();
@@ -856,9 +886,12 @@ impl CommandExecutor for ProcessExecutor {
             }) {
             Ok(worker) => worker,
             Err(error) => {
-                return CommandOutcome::Failure(CommandFailure::Adapter {
-                    message: bounded_text(error.to_string().as_bytes(), self.max_output_bytes),
-                });
+                return (
+                    CommandOutcome::Failure(CommandFailure::Adapter {
+                        message: bounded_text(error.to_string().as_bytes(), self.max_output_bytes),
+                    }),
+                    Vec::new(),
+                );
             }
         };
 
@@ -881,13 +914,16 @@ impl CommandExecutor for ProcessExecutor {
             };
             if let Some(requested_stop) = requested_stop {
                 stop_requested.store(true, std::sync::atomic::Ordering::Release);
-                return wait_for_stopped_worker(
-                    worker,
-                    requested_stop,
-                    self.cancellation.clone(),
-                    deadline,
-                    CLEANUP_GRACE,
-                    self.max_output_bytes,
+                return (
+                    wait_for_stopped_worker(
+                        worker,
+                        requested_stop,
+                        self.cancellation.clone(),
+                        deadline,
+                        CLEANUP_GRACE,
+                        self.max_output_bytes,
+                    ),
+                    Vec::new(),
                 );
             }
 
@@ -904,31 +940,40 @@ fn finish_completed_worker(
     cancelled_at: Option<std::time::Instant>,
     deadline: Option<std::time::Instant>,
     limit: usize,
-) -> CommandOutcome {
+) -> (CommandOutcome, Vec<u8>) {
     let completion = match worker.join() {
         Ok(completion) => completion,
         Err(_) => {
-            return CommandOutcome::Failure(CommandFailure::Cleanup {
-                trigger: CleanupTrigger::Exit,
-                message: "process worker panicked before cleanup confirmation".into(),
-            });
+            return (
+                CommandOutcome::Failure(CommandFailure::Cleanup {
+                    trigger: CleanupTrigger::Exit,
+                    message: "process worker panicked before cleanup confirmation".into(),
+                }),
+                Vec::new(),
+            );
         }
     };
     if let ProcessWorkerOutcome::Cleanup(message) = &completion.outcome {
-        return CommandOutcome::Failure(reattribute_cleanup_failure(
-            CommandFailure::Cleanup {
-                trigger: CleanupTrigger::Exit,
-                message: bounded_text(message.as_bytes(), limit),
-            },
-            cancelled_at,
-            deadline,
-            completion.completed_at,
-        ));
+        return (
+            CommandOutcome::Failure(reattribute_cleanup_failure(
+                CommandFailure::Cleanup {
+                    trigger: CleanupTrigger::Exit,
+                    message: bounded_text(message.as_bytes(), limit),
+                },
+                cancelled_at,
+                deadline,
+                completion.completed_at,
+            )),
+            Vec::new(),
+        );
     }
     if let Some(requested_stop) =
         requested_stop_before_completion(cancelled_at, deadline, completion.completed_at)
     {
-        return CommandOutcome::Failure(requested_stop.failure());
+        return (
+            CommandOutcome::Failure(requested_stop.failure()),
+            Vec::new(),
+        );
     }
     map_worker_outcome(completion.outcome, limit)
 }
@@ -945,7 +990,7 @@ fn wait_for_stopped_worker(
     let cleanup_deadline = std::time::Instant::now().checked_add(cleanup_grace);
     loop {
         if worker.is_finished() {
-            return finish_completed_worker(worker, cancellation.cancelled_at(), deadline, limit);
+            return finish_completed_worker(worker, cancellation.cancelled_at(), deadline, limit).0;
         }
         let now = std::time::Instant::now();
         if cleanup_deadline.is_some_and(|cleanup_deadline| now >= cleanup_deadline) {
@@ -966,8 +1011,8 @@ fn wait_for_stopped_worker(
     }
 }
 
-fn map_worker_outcome(outcome: ProcessWorkerOutcome, limit: usize) -> CommandOutcome {
-    match outcome {
+fn map_worker_outcome(outcome: ProcessWorkerOutcome, limit: usize) -> (CommandOutcome, Vec<u8>) {
+    let outcome = match outcome {
         ProcessWorkerOutcome::Adapter(message) => {
             CommandOutcome::Failure(CommandFailure::Adapter {
                 message: bounded_text(message.as_bytes(), limit),
@@ -976,8 +1021,10 @@ fn map_worker_outcome(outcome: ProcessWorkerOutcome, limit: usize) -> CommandOut
         ProcessWorkerOutcome::Spawn(error) => {
             CommandOutcome::Failure(map_processkit_error(&error, limit))
         }
-        ProcessWorkerOutcome::Exited { status, .. } if status.success() => CommandOutcome::Success,
-        ProcessWorkerOutcome::Exited { status, stderr } => {
+        ProcessWorkerOutcome::Exited { status, stdout, .. } if status.success() => {
+            return (CommandOutcome::Success, stdout);
+        }
+        ProcessWorkerOutcome::Exited { status, stderr, .. } => {
             CommandOutcome::Failure(CommandFailure::Exit {
                 code: status.code(),
                 stderr: bounded_text(&stderr, limit),
@@ -992,7 +1039,8 @@ fn map_worker_outcome(outcome: ProcessWorkerOutcome, limit: usize) -> CommandOut
         ProcessWorkerOutcome::Stopped => CommandOutcome::Failure(CommandFailure::Adapter {
             message: "process stopped without an outer timeout or cancellation".into(),
         }),
-    }
+    };
+    (outcome, Vec::new())
 }
 
 fn map_processkit_error(error: &processkit::Error, limit: usize) -> CommandFailure {
@@ -1026,6 +1074,65 @@ fn map_processkit_error(error: &processkit::Error, limit: usize) -> CommandFailu
         _ => CommandFailure::Adapter {
             message: bounded_text(error.to_string().as_bytes(), limit),
         },
+    }
+}
+
+/// Environment variable naming a directory that holds the OpenSSH client.
+///
+/// When set to an absolute directory, `ssh` and `scp` plans run the
+/// executables found there instead of the platform default.
+pub const OPENSSH_DIR_ENV: &str = "SSH_IMG_PASTE_OPENSSH_DIR";
+
+/// Maps the fixed `ssh`/`scp` plan programs to a concrete executable.
+///
+/// Windows prefers the in-box client under `%SystemRoot%\System32\OpenSSH`,
+/// which shares the user's `%USERPROFILE%\.ssh` configuration and the
+/// Windows `ssh-agent` service, over whichever `ssh.exe` happens to be first
+/// on `PATH` (often an MSYS build bundled with Git). Other programs, and other
+/// platforms without an override, keep `PATH` resolution.
+fn resolve_openssh_program(program: &str) -> String {
+    if !matches!(program, "ssh" | "scp") {
+        return program.to_owned();
+    }
+    let executable = if cfg!(windows) {
+        format!("{program}.exe")
+    } else {
+        program.to_owned()
+    };
+    if let Some(directory) = std::env::var_os(OPENSSH_DIR_ENV) {
+        let directory = std::path::PathBuf::from(directory);
+        if directory.is_absolute() {
+            return directory.join(&executable).to_string_lossy().into_owned();
+        }
+    }
+    #[cfg(windows)]
+    if let Some(system_root) = std::env::var_os("SystemRoot") {
+        let candidate = std::path::PathBuf::from(system_root)
+            .join("System32")
+            .join("OpenSSH")
+            .join(&executable);
+        if candidate.is_file() {
+            return candidate.to_string_lossy().into_owned();
+        }
+    }
+    program.to_owned()
+}
+
+/// Executes one validated plan with the platform executor and returns its
+/// bounded stdout on success.
+///
+/// Plans can only be produced by this crate's planners, so this never runs an
+/// arbitrary program.
+pub fn run_command_plan_with_system(
+    plan: &CommandPlan,
+    timeout: std::time::Duration,
+    cancellation: CancellationToken,
+    max_error_bytes: usize,
+) -> Result<Vec<u8>, CommandFailure> {
+    let mut executor = ProcessExecutor::new(cancellation, max_error_bytes);
+    match executor.execute_capturing(plan, timeout) {
+        (CommandOutcome::Success, stdout) => Ok(stdout),
+        (CommandOutcome::Failure(failure), _) => Err(failure),
     }
 }
 

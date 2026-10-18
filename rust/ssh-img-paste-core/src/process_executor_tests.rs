@@ -651,3 +651,51 @@ fn helper_failure_with_output() {
 #[test]
 #[ignore]
 fn helper_success() {}
+
+#[test]
+fn capturing_executor_returns_stdout_only_on_success() {
+    let mut executor = ProcessExecutor::new(CancellationToken::new(), 4096);
+    let (outcome, stdout) = executor.execute_capturing(
+        &helper_command("process_executor_tests::helper_prints_stdout"),
+        Duration::from_secs(5),
+    );
+    assert_eq!(outcome, CommandOutcome::Success);
+    let text = String::from_utf8(stdout).expect("utf8 stdout");
+    assert!(text.contains("captured-line-1\ncaptured-line-2"), "{text:?}");
+
+    let (outcome, stdout) = executor.execute_capturing(
+        &helper_command("process_executor_tests::helper_failure_with_output"),
+        Duration::from_secs(5),
+    );
+    assert!(matches!(outcome, CommandOutcome::Failure(CommandFailure::Exit { .. })));
+    assert!(stdout.is_empty(), "failed commands must not expose partial stdout");
+}
+
+#[test]
+fn openssh_resolution_only_rewrites_the_fixed_programs() {
+    assert_eq!(resolve_openssh_program("not-ssh"), "not-ssh");
+    let resolved = resolve_openssh_program("ssh");
+    if std::env::var_os(OPENSSH_DIR_ENV).is_none() {
+        #[cfg(windows)]
+        {
+            let in_box = std::path::Path::new(&std::env::var_os("SystemRoot").expect("SystemRoot"))
+                .join("System32")
+                .join("OpenSSH")
+                .join("ssh.exe");
+            if in_box.is_file() {
+                assert_eq!(std::path::Path::new(&resolved), in_box);
+            } else {
+                assert_eq!(resolved, "ssh");
+            }
+        }
+        #[cfg(not(windows))]
+        assert_eq!(resolved, "ssh");
+    }
+}
+
+#[test]
+#[ignore]
+fn helper_prints_stdout() {
+    println!("captured-line-1");
+    println!("captured-line-2");
+}

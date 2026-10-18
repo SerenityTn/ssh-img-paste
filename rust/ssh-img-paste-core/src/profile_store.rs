@@ -241,3 +241,197 @@ pub fn discover_profiles(root_path: &Path) -> Result<ProfileCatalog, ProfileStor
         profiles: discover_profile_entries(root_path, &root)?,
     })
 }
+
+/// Why a profile file cannot be used, without failing the whole catalog.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UnusableReason {
+    /// A supported key uses dynamic shell syntax that is never evaluated.
+    DynamicSyntax(String),
+    /// A field failed validation.
+    InvalidField(&'static str),
+    /// The file is a link, a reparse point, not a regular file, or unreadable.
+    Unreadable,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CatalogEntryStatus {
+    Usable(ValidatedProfile),
+    Unusable(UnusableReason),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CatalogEntry {
+    pub id: ProfileId,
+    pub status: CatalogEntryStatus,
+}
+
+impl CatalogEntry {
+    pub fn usable(&self) -> Option<&ValidatedProfile> {
+        match &self.status {
+            CatalogEntryStatus::Usable(profile) => Some(profile),
+            CatalogEntryStatus::Unusable(_) => None,
+        }
+    }
+}
+
+/// A fault-tolerant view of the catalog for management surfaces.
+///
+/// Individual broken profile files are reported rather than failing the
+/// whole view. Unsafe catalog directories still fail closed.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct CatalogInspection {
+    /// False when the catalog root or its `profiles` directory is absent.
+    pub configured: bool,
+    /// The stored active ID, when the active-profile file is well formed.
+    pub stored_active_profile_id: Option<ProfileId>,
+    /// True when an active-profile file exists but is malformed.
+    pub active_state_invalid: bool,
+    pub entries: Vec<CatalogEntry>,
+}
+
+impl CatalogInspection {
+    pub fn entry(&self, id: &ProfileId) -> Option<&CatalogEntry> {
+        self.entries.iter().find(|entry| &entry.id == id)
+    }
+
+    pub fn usable_count(&self) -> usize {
+        self.entries
+            .iter()
+            .filter(|entry| entry.usable().is_some())
+            .count()
+    }
+
+    /// The profile uploads use when no profile is named explicitly.
+    ///
+    /// This is the stored active profile when it names a usable entry, and
+    /// otherwise the first usable entry in ID order.
+    pub fn effective_active_profile_id(&self) -> Option<&ProfileId> {
+        if let Some(id) = &self.stored_active_profile_id {
+            if self.entry(id).and_then(CatalogEntry::usable).is_some() {
+                return Some(id);
+            }
+        }
+        self.entries
+            .iter()
+            .find(|entry| entry.usable().is_some())
+            .map(|entry| &entry.id)
+    }
+
+    /// True when the stored active ID names a usable profile.
+    pub fn stored_active_is_usable(&self) -> bool {
+        self.stored_active_profile_id
+            .as_ref()
+            .and_then(|id| self.entry(id))
+            .and_then(CatalogEntry::usable)
+            .is_some()
+    }
+}
+
+pub(crate) fn read_profile_source(
+    profiles: &std::fs::File,
+    id: &ProfileId,
+) -> std::io::Result<String> {
+    let name = format!("{}.env", id.as_str());
+    let mut file = open_relative_file(profiles, Path::new(&name))?;
+    let mut input = String::new();
+    std::io::Read::read_to_string(&mut file, &mut input)?;
+    Ok(input)
+}
+
+pub(crate) fn open_profiles_dir(
+    root_path: &Path,
+    root: &std::fs::File,
+) -> Result<Option<std::fs::File>, ProfileStoreError> {
+    match cap_primitives::fs::open_dir_nofollow(root, Path::new("profiles")) {
+        Ok(handle) => Ok(Some(handle)),
+        Err(source) if source.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(source) => Err(ProfileStoreError::Io {
+            path: root_path.join("profiles"),
+            source,
+        }),
+    }
+}
+
+pub(crate) fn inspect_open_catalog(
+    root_path: &Path,
+    root: &std::fs::File,
+) -> Result<CatalogInspection, ProfileStoreError> {
+    let (stored_active_profile_id, active_state_invalid) =
+        match read_active_profile_id(root_path, root) {
+            Ok(id) => (id, false),
+            Err(ProfileStoreError::InvalidActiveProfile) => (None, true),
+            Err(error) => return Err(error),
+        };
+    let Some(profiles_handle) = open_profiles_dir(root_path, root)? else {
+        return Ok(CatalogInspection {
+            configured: false,
+            stored_active_profile_id,
+            active_state_invalid,
+            entries: Vec::new(),
+        });
+    };
+    let profiles_path = root_path.join("profiles");
+    let profiles_dir = cap_std::fs::Dir::from_std_file(profiles_handle);
+    let entries = profiles_dir
+        .entries()
+        .map_err(|source| ProfileStoreError::Io {
+            path: profiles_path.clone(),
+            source,
+        })?;
+    let mut ids = Vec::new();
+    for entry in entries {
+        let entry = entry.map_err(|source| ProfileStoreError::Io {
+            path: profiles_path.clone(),
+            source,
+        })?;
+        let name = entry.file_name();
+        let path = Path::new(&name);
+        if path.extension().and_then(|value| value.to_str()) != Some("env") {
+            continue;
+        }
+        let Some(stem) = path.file_stem().and_then(|value| value.to_str()) else {
+            continue;
+        };
+        if let Ok(id) = ProfileId::parse(stem) {
+            ids.push(id);
+        }
+    }
+    ids.sort_by(|left, right| left.as_str().cmp(right.as_str()));
+    let profiles_handle = profiles_dir.into_std_file();
+    let entries = ids
+        .into_iter()
+        .map(|id| {
+            let status = match read_profile_source(&profiles_handle, &id) {
+                Err(_) => CatalogEntryStatus::Unusable(UnusableReason::Unreadable),
+                Ok(input) => match parse_profile(&input) {
+                    Err(ParseError::DynamicSupportedAssignment(key)) => {
+                        CatalogEntryStatus::Unusable(UnusableReason::DynamicSyntax(key))
+                    }
+                    Ok(document) => match validate_profile(&id, document) {
+                        Ok(profile) => CatalogEntryStatus::Usable(profile),
+                        Err(ValidationError::InvalidField(field)) => {
+                            CatalogEntryStatus::Unusable(UnusableReason::InvalidField(field))
+                        }
+                    },
+                },
+            };
+            CatalogEntry { id, status }
+        })
+        .collect();
+    Ok(CatalogInspection {
+        configured: true,
+        stored_active_profile_id,
+        active_state_invalid,
+        entries,
+    })
+}
+
+/// Inspects the catalog without failing on individual broken profiles.
+pub fn inspect_catalog(root_path: &Path) -> Result<CatalogInspection, ProfileStoreError> {
+    let root = match open_catalog_root(root_path) {
+        Ok(root) => root,
+        Err(ProfileStoreError::NotConfigured) => return Ok(CatalogInspection::default()),
+        Err(error) => return Err(error),
+    };
+    inspect_open_catalog(root_path, &root)
+}
