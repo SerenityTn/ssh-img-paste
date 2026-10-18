@@ -69,7 +69,8 @@ Host work-ssh
 | **Capture full screen** | Captures the monitor under the mouse pointer and uploads it. |
 | **Uploaded images…** | Lists uploads newest first. Open downloads an image and opens it, Copy remote path copies its path, and Delete all uploads removes every PNG in the upload folder after you confirm. |
 | **Manage Profiles…** | Add, edit, duplicate, rename, activate, test, or delete destinations. |
-| Tray icon double-click | Opens the main window. A single click never uploads. |
+| Tray icon click | Uploads, like **Upload clipboard image**: the clipboard image, or a screen capture when there is none. |
+| Tray icon double-click | Opens the main window. |
 | Tray icon right-click | Opens the menu with the same actions and a **Destination** switcher. |
 
 After an upload, the remote path is on the clipboard, ready to paste into your SSH session. The path is kept out of Windows clipboard history and cloud sync. After the destination's restore delay, 60 seconds by default, the earlier clipboard content comes back, unless something else replaced the clipboard in the meantime.

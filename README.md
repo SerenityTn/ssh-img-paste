@@ -30,16 +30,14 @@ SSH Image Paste turns an image on your computer into a remote file path that ter
   </tr>
 </table>
 
-## Why it exists
+## How it works
 
-Text paste crosses an SSH session; image paste does not. Terminal agents and CLI tools can usually attach a file when you paste its path, so SSH Image Paste bridges the gap:
+1. Click the menu-bar icon on macOS, or the tray icon on Windows.
+2. If the clipboard holds an image, it is uploaded. Otherwise you drag to capture a screen region.
+3. The PNG goes to your SSH host over SCP, and its remote path is copied to your clipboard.
+4. Paste the path into your SSH session. Your previous clipboard comes back after 60 seconds.
 
-1. Copy an image, or take a screenshot.
-2. Click the menu-bar icon on macOS, or use the tray app on Windows.
-3. The app uploads a PNG over SCP.
-4. Paste the resulting remote path into the SSH session.
-
-If the clipboard has no image, the app can capture a region or the full display. After the configured grace period, it restores the clipboard content that existed before the upload.
+Text paste crosses an SSH session; image paste does not. Terminal agents and CLI tools can attach a file when you paste its path, so this closes the gap.
 
 ## Features
 

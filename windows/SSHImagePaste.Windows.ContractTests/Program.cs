@@ -98,7 +98,7 @@ public static class Program
             DesktopAction.Quit,
         ];
         Check(TrayMenuModel.PrimaryActions.SequenceEqual(expected), "tray action order differs from desktop parity contract");
-        Check(TrayInteraction.ActionForSingleLeftClick() is null, "single-clicking the tray icon must never upload or perform another side effect");
+        Check(TrayInteraction.ActionForSingleLeftClick() == DesktopAction.UploadClipboard, "a single tray click uploads, like the macOS menu-bar icon");
         Check(TrayInteraction.ActionForDoubleClick() == DesktopAction.OpenWindow, "double-clicking the tray icon must only open the window");
         Check(ClosePolicy.Decide(trayAvailable: true) == CloseDecision.HideToTray, "a usable tray should keep the application available after close");
         Check(ClosePolicy.Decide(trayAvailable: false) == CloseDecision.ExitApplication, "without a usable tray, close must not strand an invisible process");
