@@ -313,3 +313,13 @@ fn created_files_are_private() {
     assert_eq!(mode(root.join("profiles")), 0o700);
     let _ = std::fs::remove_dir_all(root);
 }
+
+#[test]
+fn hosts_with_a_port_separator_are_rejected_before_saving() {
+    let root = temporary_root("colon");
+    assert!(matches!(
+        create_profile(&root, &id("ported"), &fields("Ported", "host:22")),
+        Err(MutationError::InvalidField("host"))
+    ));
+    let _ = std::fs::remove_dir_all(root);
+}

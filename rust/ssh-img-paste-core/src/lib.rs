@@ -296,12 +296,15 @@ fn has_shell_meta(value: &str) -> bool {
     })
 }
 
+/// SSH destinations are aliases or `user@host`. A colon is rejected because
+/// `scp` would read it as the host/path separator; ports belong in
+/// `~/.ssh/config`.
 fn valid_host(value: &str) -> bool {
     !value.is_empty()
         && !value.starts_with('-')
         && value
             .chars()
-            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '@' | ':' | '-'))
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '@' | '-'))
 }
 
 fn safe_path_chars(value: &str) -> bool {
