@@ -46,6 +46,14 @@ public static class Program
     [STAThread]
     public static int Main()
     {
+        // Keep diagnostics from the code under test out of the real settings folder.
+        var isolated = Path.Combine(Path.GetTempPath(), $"ssh-img-paste-shell-logs-{Environment.ProcessId}");
+        Environment.SetEnvironmentVariable(AppPaths.ConfigRootEnvironmentVariable, isolated);
+        Check(AppPaths.ConfigRoot == isolated && AppPaths.LogDirectory.StartsWith(isolated, StringComparison.Ordinal),
+            "the settings root override must redirect logs");
+        Environment.SetEnvironmentVariable(AppPaths.ConfigRootEnvironmentVariable, "relative-path");
+        Check(AppPaths.ConfigRootOverride is null, "a relative settings override must be ignored");
+        Environment.SetEnvironmentVariable(AppPaths.ConfigRootEnvironmentVariable, isolated);
         Section("tray", TrayContracts);
         Section("cli invocation", InvocationContracts);
         Section("protocol parsing", ProtocolContracts);
@@ -62,6 +70,16 @@ public static class Program
             Console.Error.WriteLine($"FAIL: {Failures.Count} of {checks} checks failed");
             Console.Error.WriteLine(string.Join(Environment.NewLine, Failures.Select(failure => $"  - {failure}")));
             return 1;
+        }
+        try
+        {
+            Directory.Delete(isolated, recursive: true);
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
         }
         Console.WriteLine($"PASS: Windows desktop shell contracts ({checks} checks)");
         return 0;

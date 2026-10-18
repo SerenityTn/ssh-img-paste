@@ -30,7 +30,7 @@ public sealed class AppController : IDisposable
     {
         this.dispatcher = dispatcher;
         this.shutdown = shutdown;
-        Cli = new CliClient(AppPaths.BundledCliPath);
+        Cli = new CliClient(AppPaths.BundledCliPath, AppPaths.ConfigRootOverride);
         Service = new SshImagePasteService(Cli);
         Clipboard = new ClipboardService();
         Uploads = new UploadCoordinator(Service, Clipboard, HideWindowsForCapture);

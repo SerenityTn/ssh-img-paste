@@ -70,8 +70,10 @@
                    AutomationProperties.Name="Status" AutomationProperties.LiveSetting="Assertive" />
 
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,20,0,0">
-            <Button x:Name="SaveButton" Content="_Save" MinWidth="96" IsDefault="True" Click="Save_Click"
-                    Style="{DynamicResource AccentButtonStyle}" />
+            <Button x:Name="SaveButton"  MinWidth="96" IsDefault="True" Click="Save_Click"
+                    Style="{DynamicResource AccentButtonStyle}">
+                    <AccessText Text="_Save" />
+                </Button>
             <Button Content="Cancel" MinWidth="96" Margin="8,0,0,0" IsCancel="True" />
         </StackPanel>
     </StackPanel>

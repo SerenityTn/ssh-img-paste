@@ -27,8 +27,10 @@
             <Button x:Name="CleanButton" Content="Delete _all uploads…" DockPanel.Dock="Right" MinWidth="150"
                     Click="Clean_Click" AutomationProperties.HelpText="Deletes every PNG in this destination's upload folder." />
             <StackPanel Orientation="Horizontal">
-                <Button x:Name="OpenButton" Content="_Open" MinWidth="88" Click="Open_Click"
-                        Style="{DynamicResource AccentButtonStyle}" AutomationProperties.HelpText="Downloads the image and opens it." />
+                <Button x:Name="OpenButton"  MinWidth="88" Click="Open_Click"
+                        Style="{DynamicResource AccentButtonStyle}" AutomationProperties.HelpText="Downloads the image and opens it.">
+                    <AccessText Text="_Open" />
+                </Button>
                 <Button x:Name="CopyButton" Content="_Copy remote path" MinWidth="140" Margin="8,0,0,0" Click="Copy_Click" />
             </StackPanel>
         </DockPanel>

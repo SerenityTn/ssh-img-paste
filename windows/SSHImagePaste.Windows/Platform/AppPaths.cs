@@ -6,9 +6,23 @@ public static class AppPaths
     public const string ProductName = "SSH Image Paste";
     public const string CliFileName = "ssh-img-paste.exe";
 
+    /// <summary>Absolute directory that replaces the default settings root, for tests and portable use.</summary>
+    public const string ConfigRootEnvironmentVariable = "SSH_IMG_PASTE_CONFIG_ROOT";
+
+    /// <summary>The settings root passed to the CLI, or null to use the CLI's default.</summary>
+    public static string? ConfigRootOverride
+    {
+        get
+        {
+            var value = Environment.GetEnvironmentVariable(ConfigRootEnvironmentVariable);
+            return !string.IsNullOrWhiteSpace(value) && Path.IsPathFullyQualified(value) ? value : null;
+        }
+    }
+
     /// <summary>Same root the Rust CLI uses for profiles.</summary>
     public static string ConfigRoot =>
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), ProductName);
+        ConfigRootOverride
+        ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), ProductName);
 
     public static string LogDirectory => Path.Combine(ConfigRoot, "logs");
 
