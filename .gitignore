@@ -17,3 +17,7 @@ target/
 
 # macOS
 .DS_Store
+
+# .NET build output (scoped: the macOS CLI lives in the tracked bin/)
+windows/**/bin/
+windows/**/obj/
