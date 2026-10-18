@@ -1,4 +1,4 @@
-use ssh_img_paste_core::{ProfileSelection, resolve_profile};
+use ssh_img_paste_core::{ProfileId, ProfileSelection, resolve_profile};
 use std::path::PathBuf;
 
 fn temporary_catalog() -> PathBuf {
@@ -97,5 +97,33 @@ fn missing_active_file_selects_first_sorted_profile_without_writing() {
     assert_eq!(selected.id.as_str(), "alpha");
     assert_eq!(selected.profile.host, "alpha@example.test");
     assert!(!root.join("active-profile").exists());
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn a_broken_unrelated_profile_does_not_block_resolution() {
+    let root = temporary_catalog();
+    write_profile(&root, "alpha", "alpha@example.test");
+    std::fs::write(
+        root.join("profiles").join("broken.env"),
+        "SSH_HOST=$(whoami)\nSSH_REMOTE_HOME=/home/user\nSSH_REMOTE_DIR=img\n",
+    )
+    .expect("broken profile");
+
+    let active = resolve_profile(&root, ProfileSelection::Active).expect("first usable");
+    assert_eq!(active.id.as_str(), "alpha");
+    let explicit = resolve_profile(
+        &root,
+        ProfileSelection::Explicit(ProfileId::parse("alpha").expect("id")),
+    )
+    .expect("explicit healthy profile");
+    assert_eq!(explicit.profile.host, "alpha@example.test");
+    assert!(matches!(
+        resolve_profile(
+            &root,
+            ProfileSelection::Explicit(ProfileId::parse("broken").expect("id"))
+        ),
+        Err(ssh_img_paste_core::ProfileStoreError::Parse { .. })
+    ));
     let _ = std::fs::remove_dir_all(root);
 }

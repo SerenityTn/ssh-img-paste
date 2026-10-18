@@ -1118,6 +1118,11 @@ fn resolve_openssh_program(program: &str) -> String {
     program.to_owned()
 }
 
+/// The executable an `ssh` or `scp` plan will run, for diagnostics.
+pub fn openssh_program_path(program: &str) -> Option<String> {
+    matches!(program, "ssh" | "scp").then(|| resolve_openssh_program(program))
+}
+
 /// Executes one validated plan with the platform executor and returns its
 /// bounded stdout on success.
 ///

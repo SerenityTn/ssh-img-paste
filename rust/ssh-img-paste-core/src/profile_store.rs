@@ -208,30 +208,67 @@ fn discover_profile_entries(
     Ok(profiles)
 }
 
+/// Resolves one profile for an operation.
+///
+/// Only the selected profile has to be usable: a broken, unrelated profile
+/// file never blocks uploads to a healthy destination. Unsafe catalog
+/// directories still fail closed.
 pub fn resolve_profile(
     root_path: &Path,
     selection: ProfileSelection,
 ) -> Result<SelectedProfile, ProfileStoreError> {
     let root = open_catalog_root(root_path)?;
-    let profiles = discover_profile_entries(root_path, &root)?;
-    if profiles.is_empty() {
+    let inspection = inspect_open_catalog(root_path, &root)?;
+    if !inspection.configured || inspection.entries.is_empty() {
         return Err(ProfileStoreError::NotConfigured);
     }
-    let requested_id = match selection {
-        ProfileSelection::Active => read_active_profile_id(root_path, &root)?,
-        ProfileSelection::Explicit(id) => Some(id),
-    };
-    let discovered = match requested_id {
-        Some(id) => profiles
-            .iter()
-            .find(|profile| profile.id == id)
+    let entry = match selection {
+        ProfileSelection::Explicit(id) => inspection
+            .entry(&id)
             .ok_or(ProfileStoreError::ProfileNotFound(id))?,
-        None => profiles.first().ok_or(ProfileStoreError::NotConfigured)?,
+        ProfileSelection::Active => {
+            if inspection.active_state_invalid {
+                return Err(ProfileStoreError::InvalidActiveProfile);
+            }
+            match &inspection.stored_active_profile_id {
+                Some(id) => inspection
+                    .entry(id)
+                    .ok_or_else(|| ProfileStoreError::ProfileNotFound(id.clone()))?,
+                None => inspection
+                    .entries
+                    .iter()
+                    .find(|entry| entry.usable().is_some())
+                    .ok_or(ProfileStoreError::NotConfigured)?,
+            }
+        }
     };
-    Ok(SelectedProfile {
-        id: discovered.id.clone(),
-        profile: discovered.profile.clone(),
-    })
+    match &entry.status {
+        CatalogEntryStatus::Usable(profile) => Ok(SelectedProfile {
+            id: entry.id.clone(),
+            profile: profile.clone(),
+        }),
+        CatalogEntryStatus::Unusable(UnusableReason::DynamicSyntax(key)) => {
+            Err(ProfileStoreError::Parse {
+                id: entry.id.clone(),
+                source: ParseError::DynamicSupportedAssignment(key.clone()),
+            })
+        }
+        CatalogEntryStatus::Unusable(UnusableReason::InvalidField(field)) => {
+            Err(ProfileStoreError::Validation {
+                id: entry.id.clone(),
+                source: ValidationError::InvalidField(field),
+            })
+        }
+        CatalogEntryStatus::Unusable(UnusableReason::Unreadable) => Err(ProfileStoreError::Io {
+            path: root_path
+                .join("profiles")
+                .join(format!("{}.env", entry.id.as_str())),
+            source: std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "profile file is linked, not regular, or unreadable",
+            ),
+        }),
+    }
 }
 
 pub fn discover_profiles(root_path: &Path) -> Result<ProfileCatalog, ProfileStoreError> {
