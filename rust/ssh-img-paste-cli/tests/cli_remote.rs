@@ -14,12 +14,27 @@ struct Fixture {
     envs: Vec<(String, String)>,
 }
 
+/// Builds the `fake_openssh` example once per test run and returns its path.
+///
+/// `cargo test` alone does not place examples in `target/<profile>/examples`,
+/// so the tests build it themselves instead of relying on a prior step.
 fn fake_openssh_executable() -> PathBuf {
-    let deps = std::env::current_exe().expect("test exe");
-    let profile_dir = deps.parent().and_then(Path::parent).expect("target profile dir");
-    profile_dir
-        .join("examples")
-        .join(format!("fake_openssh{}", std::env::consts::EXE_SUFFIX))
+    static BUILT: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+    BUILT
+        .get_or_init(|| {
+            let output = Command::new(env!("CARGO"))
+                .args(["build", "--quiet", "--example", "fake_openssh", "--manifest-path"])
+                .arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml"))
+                .output()
+                .expect("run cargo to build fake_openssh");
+            assert!(output.status.success(), "building fake_openssh failed: {output:?}");
+            let deps = std::env::current_exe().expect("test exe");
+            let profile_dir = deps.parent().and_then(Path::parent).expect("target profile dir");
+            profile_dir
+                .join("examples")
+                .join(format!("fake_openssh{}", std::env::consts::EXE_SUFFIX))
+        })
+        .clone()
 }
 
 impl Fixture {
