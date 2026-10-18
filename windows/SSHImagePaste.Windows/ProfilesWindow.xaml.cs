@@ -3,6 +3,7 @@ using System.Windows.Automation.Peers;
 using System.Windows.Controls;
 using System.Windows.Input;
 using SSHImagePaste.Windows.Cli;
+using SSHImagePaste.Windows.Platform;
 using SSHImagePaste.Windows.Profiles;
 
 namespace SSHImagePaste.Windows;
@@ -105,10 +106,14 @@ public partial class ProfilesWindow : Window
             AddRow("Remote home", profile.RemoteHome);
             AddRow("Upload folder", profile.RemoteDirectory);
             AddRow("Uploads land in", profile.RemoteRoot);
-            AddRow("Without a clipboard image", profile.ShotMode == ShotMode.Full ? "Capture the full screen" : "Capture a region");
+            AddRow("No clipboard image", profile.ShotMode == ShotMode.Full ? "Capture the full screen" : "Capture a region");
             AddRow("Restore clipboard after", profile.RestoreSeconds == 0 ? "Never — keep the path" : $"{profile.RestoreSeconds} seconds");
         }
-        AddRow("Stored in", System.IO.Path.Combine(controller.Catalog?.ConfigRoot ?? string.Empty, "profiles", $"{profile.Id}.env"));
+        if (!profile.Usable || !profile.Editable)
+        {
+            // Read-only and broken profiles are fixed by editing the file, so show where it is.
+            AddRow("Stored in", AppPaths.DisplayPath(System.IO.Path.Combine(controller.Catalog?.ConfigRoot ?? string.Empty, "profiles", $"{profile.Id}.env")));
+        }
         SetButtons(profile);
     }
 

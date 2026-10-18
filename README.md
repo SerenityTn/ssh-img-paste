@@ -2,24 +2,40 @@
   <img src="assets/AppIcon.svg" width="128" alt="SSH Image Paste app icon">
 </p>
 <h1 align="center">SSH Image Paste</h1>
-<p align="center">Send a Mac clipboard image or screenshot to any SSH host, then paste the remote path into your terminal.</p>
+<p align="center">Send a clipboard image or screenshot from macOS or Windows to any SSH host, then paste the remote path into your terminal.</p>
 <p align="center">
   <a href="https://github.com/SerenityTn/ssh-img-paste/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/SerenityTn/ssh-img-paste/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/SerenityTn/ssh-img-paste/actions/workflows/windows-desktop.yml"><img alt="Windows CI" src="https://github.com/SerenityTn/ssh-img-paste/actions/workflows/windows-desktop.yml/badge.svg"></a>
   <a href="https://github.com/SerenityTn/ssh-img-paste/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/SerenityTn/ssh-img-paste"></a>
   <a href="#requirements"><img alt="macOS 13 or newer" src="https://img.shields.io/badge/macOS-13%2B-111827?logo=apple"></a>
+  <a href="docs/WINDOWS.md"><img alt="Windows 10 1809 or newer" src="https://img.shields.io/badge/Windows-10%201809%2B%20%7C%2011-0078D4"></a>
   <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/github/license/SerenityTn/ssh-img-paste"></a>
 </p>
 
-SSH Image Paste is a native macOS menu-bar app and Bash CLI. It turns an image on your Mac into a remote file path that terminal tools can consume. No clipboard watcher, cloud account, daemon on the server, or proprietary protocol is required. Transfers use your existing OpenSSH setup.
+SSH Image Paste turns an image on your computer into a remote file path that terminal tools can consume. It ships as a native macOS menu-bar app with a Bash CLI, and as a Windows tray app with a Rust CLI. No clipboard watcher, cloud account, daemon on the server, or proprietary protocol is required. Transfers use your existing OpenSSH setup.
 
-![Native SSH profile manager with fixture destinations](docs/images/profile-manager.png)
+| Platform | App | Status | Guide |
+| --- | --- | --- | --- |
+| macOS 13+ | AppKit menu-bar app and Bash CLI | Stable, Homebrew and source installs | This page |
+| Windows 10 1809+ and 11 | WPF tray app and Rust CLI | New, install from source | [Windows guide](docs/WINDOWS.md) |
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/profile-manager.png" alt="macOS profile manager with fixture destinations"><br><sub>macOS profile manager</sub></td>
+    <td width="50%"><img src="docs/images/windows-profiles.png" alt="Windows profile manager with fixture destinations"><br><sub>Windows profile manager</sub></td>
+  </tr>
+  <tr>
+    <td><img src="docs/images/windows-main.png" alt="Windows main window with the active destination"><br><sub>Windows main window</sub></td>
+    <td><img src="docs/images/windows-uploads.png" alt="Windows uploaded images list"><br><sub>Windows uploaded images</sub></td>
+  </tr>
+</table>
 
 ## Why it exists
 
 Text paste crosses an SSH session; image paste does not. Terminal agents and CLI tools can usually attach a file when you paste its path, so SSH Image Paste bridges the gap:
 
 1. Copy an image, or take a screenshot.
-2. Click the menu-bar icon.
+2. Click the menu-bar icon on macOS, or use the tray app on Windows.
 3. The app uploads a PNG over SCP.
 4. Paste the resulting remote path into the SSH session.
 
@@ -27,19 +43,25 @@ If the clipboard has no image, the app can capture a region or the full display.
 
 ## Features
 
-- Native AppKit menu-bar app for macOS 13 and newer.
+Both editions share these features. The rest of this page covers macOS; the [Windows guide](docs/WINDOWS.md) covers the Windows tray app, its installation, and its file locations.
+
+- Native AppKit menu-bar app for macOS 13 and newer, and a WPF tray app for Windows 10 1809+ and Windows 11.
 - Clipboard image upload plus explicit region and full-screen capture.
 - Multiple named SSH profiles with persistent active-destination selection.
 - Native profile manager with add, edit, duplicate, rename, activate, connection test, and delete actions.
 - Uploaded-image listing, download/open, and confirmed remote cleanup.
 - Secure literal profile parser; profile files are never sourced or evaluated.
 - Existing `~/.ssh/config`, keychain, and SSH-agent support.
-- Apple Silicon and Intel source builds.
+- Apple Silicon and Intel source builds on macOS; x64 builds on Windows.
 - Standalone CLI with stable machine-readable profile output.
 
 ## Quick start
 
-### Install with Homebrew
+### Windows
+
+Build and install from source with the .NET 10 SDK and Rust, then add a destination in the profile manager. The [Windows guide](docs/WINDOWS.md) has the exact commands, requirements, and troubleshooting.
+
+### Install with Homebrew (macOS)
 
 ```sh
 brew install SerenityTn/tap/ssh-img-paste
@@ -72,7 +94,7 @@ ssh work-ssh 'mkdir -p ~/img-uploads'
 
 Left-click the menu-bar icon to upload. Secondary-click it to switch destinations, capture explicitly, load uploaded images, manage profiles, or clean the active destination.
 
-### Install from source
+### Install from source (macOS)
 
 ```sh
 git clone https://github.com/SerenityTn/ssh-img-paste.git
@@ -82,7 +104,7 @@ cd ssh-img-paste
 
 The source installer builds `~/Applications/SSHImagePaste.app`, links the CLI at `~/bin/ssh-img-paste`, creates a default named profile for fresh installations, and starts a user LaunchAgent.
 
-## Menu behavior
+## Menu behavior (macOS)
 
 | Action | Result |
 | --- | --- |
@@ -114,9 +136,9 @@ ssh-img-paste profile test work
 
 See [the complete CLI reference](docs/CLI.md) for profile creation, updates, rename, deletion, output contracts, and exit behavior.
 
-## Configuration
+## Configuration (macOS)
 
-Named profiles live under:
+Named profiles live under the following paths. Windows keeps them in `%LOCALAPPDATA%\SSH Image Paste`; see the [Windows guide](docs/WINDOWS.md#files-and-settings).
 
 ```text
 ~/.config/ssh-img-paste/profiles/<id>.env
@@ -129,7 +151,7 @@ Profile files are parsed as literal data. Dynamic supported values such as `${US
 
 Read [Profile configuration](docs/CONFIGURATION.md) for the field reference, SSH aliases, parser contract, and permissions.
 
-## Permissions and signing
+## Permissions and signing (macOS)
 
 Region and full-screen capture require macOS Screen Recording permission. The app asks only when an explicit capture needs it:
 
@@ -140,6 +162,8 @@ Clipboard-only uploads do not require Screen Recording access.
 Current source and Homebrew builds are compiled locally and ad-hoc signed. A stable designated requirement keeps the app's Screen Recording identity consistent across rebuilds, but the build is not Apple-notarized. Review [SECURITY.md](SECURITY.md) for the trust model and private vulnerability-reporting channel.
 
 ## Requirements
+
+These are the macOS requirements. For Windows, see the [Windows guide](docs/WINDOWS.md#requirements).
 
 - macOS 13 or newer, Apple Silicon or Intel.
 - Xcode Command Line Tools for source builds.

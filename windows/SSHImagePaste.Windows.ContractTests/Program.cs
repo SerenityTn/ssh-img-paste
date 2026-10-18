@@ -272,6 +272,13 @@ public static class Program
 
     private static void StartupContracts()
     {
+        var profile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        Check(AppPaths.DisplayPath(Path.Combine(profile, ".ssh", "config")) == @"%USERPROFILE%\.ssh\config", "UI paths must hide the account name");
+        Check(AppPaths.DisplayPath(Path.Combine(local, "SSH Image Paste", "profiles", "work.env")) == @"%LOCALAPPDATA%\SSH Image Paste\profiles\work.env",
+            "the more specific LOCALAPPDATA prefix wins");
+        Check(AppPaths.DisplayPath(profile + "-other\\x") == profile + "-other\\x", "a sibling folder with the same prefix is not shortened");
+
         Check(StartupRegistration.Command(@"C:\Users\Me\AppData\Local\Programs\SSH Image Paste\SSHImagePaste.exe")
                 == "\"C:\\Users\\Me\\AppData\\Local\\Programs\\SSH Image Paste\\SSHImagePaste.exe\" --background",
             "the Run command must quote the path and start in the background");

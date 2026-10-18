@@ -4,8 +4,14 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Windows edition: a tray app for Windows 10 1809+ and Windows 11 with clipboard upload, region and full-screen capture, a destination switcher, a profile manager, and an uploaded-images window. See [the Windows guide](docs/WINDOWS.md).
+- Rust CLI for Windows and Linux with profile management, connection tests, and upload list, fetch, and clean commands.
+
 ### Fixed
 
+- Profiles with a colon in the SSH host are now rejected when saved, instead of failing every upload.
 - Restored reliable native menu-bar notifications after a screenshot path is copied, including captures triggered by clipboard fallback.
 
 ## [2.0.2] - 2026-08-02
