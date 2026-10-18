@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 OUTPUT="${1:-$ROOT/docs/images/profile-manager.png}"
-TMP="$(mktemp -d -t ssh-img-paste-screenshot)"
+TMP="$(mktemp -d "${TMPDIR:-/tmp}/ssh-img-paste-screenshot.XXXXXX")"
 trap 'rm -rf "$TMP"' EXIT
 MOCK="$ROOT/tests/fixtures/ssh-img-paste-docs-mock"
 

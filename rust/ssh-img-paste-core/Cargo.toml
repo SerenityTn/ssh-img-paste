@@ -1,0 +1,19 @@
+[package]
+name = "ssh-img-paste-core"
+version = "0.1.0-dev"
+edition = "2024"
+publish = false
+license = "MIT"
+rust-version = "1.92"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+cap-primitives = "=4.0.3"
+cap-std = "=4.0.3"
+processkit = { version = "=3.3.4", default-features = false, features = ["process-control", "stats"] }
+tokio = { version = "1.49", features = ["rt", "time", "process", "io-util", "sync"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"

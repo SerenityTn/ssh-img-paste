@@ -5,10 +5,19 @@ ssh-img-paste.env
 
 # Build output
 build/
+dist/
 *.app/
+*.egg-info/
+__pycache__/
+*.py[cod]
+target/
 
 # Local Hermes implementation plans and session artifacts
 .hermes/
 
 # macOS
 .DS_Store
+
+# .NET build output (scoped: the macOS CLI lives in the tracked bin/)
+windows/**/bin/
+windows/**/obj/

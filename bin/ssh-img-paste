@@ -519,7 +519,7 @@ atomic_write_file() {
 
 atomic_write_string() {
   local path="$1" value="$2" tmpcontent
-  tmpcontent="$(mktemp -t ssh-profile-content)" || return 73
+  tmpcontent="$(mktemp "${TMPDIR:-/tmp}/ssh-profile-content.XXXXXX")" || return 73
   printf '%s' "$value" > "$tmpcontent" || { rm -f "$tmpcontent"; return 73; }
   atomic_write_file "$path" "$tmpcontent"
   local status=$?
@@ -596,7 +596,7 @@ require_create_fields() {
 }
 
 replace_or_append_profile_file() {
-  local path="$1" out="$2" line key replaced_label=0 replaced_host=0 replaced_home=0 replaced_dir=0 replaced_mode=0 replaced_secs=0 value
+  local path="$1" out="$2" line key replaced_label=0 replaced_host=0 replaced_home=0 replaced_dir=0 replaced_mode=0 replaced_secs=0 value=""
   while IFS= read -r line || [ -n "$line" ]; do
     case "$line" in *=*) key="${line%%=*}" ;; *) key="" ;; esac
     case "$key" in
@@ -666,7 +666,7 @@ _mutate_create() {
   if [ -z "$was_active" ] || ! valid_profile_id "$was_active" || ! profile_exists "$was_active"; then
     should_activate=1
   fi
-  content="$(mktemp -t ssh-profile-new)" || return 73
+  content="$(mktemp "${TMPDIR:-/tmp}/ssh-profile-new.XXXXXX")" || return 73
   write_profile_content_new "$content" "$FIELD_LABEL" "$FIELD_HOST" "$FIELD_HOME" "$FIELD_DIR" "$FIELD_MODE" "$FIELD_SECS"
   atomic_write_file "$path" "$content" || { rm -f "$content"; return 73; }
   rm -f "$content"
@@ -698,7 +698,7 @@ _mutate_update() {
     echo "✗ Profile is manually managed and cannot be rewritten by the GUI/CLI: $id" >&2
     return 77
   fi
-  out="$(mktemp -t ssh-profile-update)" || return 73
+  out="$(mktemp "${TMPDIR:-/tmp}/ssh-profile-update.XXXXXX")" || return 73
   replace_or_append_profile_file "$path" "$out"
   atomic_write_file "$path" "$out" || { rm -f "$out"; return 73; }
   rm -f "$out"
@@ -890,7 +890,7 @@ acquire_image() {
 do_upload() {
   local mode="$1"
   local remote_root="$REMOTE_HOME/$REMOTE_DIR"
-  local tmp; tmp="$(mktemp -t ssh-image-paste).png"
+  local tmp; tmp="$(mktemp "${TMPDIR:-/tmp}/ssh-image-paste.XXXXXX.png")"
   trap 'rm -f "$tmp"' RETURN
 
   if { [ "$mode" = auto ] || [ "$mode" = clipboard ]; } && [ ! -x "$PNGPASTE" ]; then
@@ -923,7 +923,7 @@ do_upload() {
 
   local remote_path="$remote_root/$name"
   local grace="${SSH_CLIP_RESTORE_SECONDS:-60}"
-  local snapdir; snapdir="$(mktemp -d -t sshclip)"
+  local snapdir; snapdir="$(mktemp -d "${TMPDIR:-/tmp}/sshclip.XXXXXX")"
   local snaptype; snaptype="$(snapshot_clipboard "$snapdir")"
   printf '%s' "$remote_path" | pbcopy
   if [ "$grace" -gt 0 ] 2>/dev/null; then
@@ -1017,7 +1017,7 @@ case "${1:-upload}" in
     validate_fetch_name "$name" || exit $?
     load_profile "$SELECTED_PROFILE"
     remote_root="$REMOTE_HOME/$REMOTE_DIR"
-    dest="$(mktemp -d -t ssh-image-paste)/$name"
+    dest="$(mktemp -d "${TMPDIR:-/tmp}/ssh-image-paste.XXXXXX")/$name"
     scp -q "${SSH_OPTS[@]}" "$SSH:$remote_root/$name" "$dest"
     echo "$dest"
     ;;

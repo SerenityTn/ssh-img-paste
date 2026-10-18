@@ -1,0 +1,48 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <!-- Required by source-generated LibraryImport P/Invoke stubs. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!-- WPF0001: Fluent ThemeMode is marked experimental but is the supported Windows 11 look. -->
+    <!-- WFO0003: this is a WPF entry point, so per-monitor DPI awareness must come from app.manifest. -->
+    <NoWarn>$(NoWarn);WPF0001;WFO0003</NoWarn>
+    <AssemblyName>SSHImagePaste</AssemblyName>
+    <RootNamespace>SSHImagePaste.Windows</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\AppIcon.ico</ApplicationIcon>
+    <Product>SSH Image Paste</Product>
+    <AssemblyTitle>SSH Image Paste</AssemblyTitle>
+    <Description>Upload a clipboard image or screenshot to an SSH host and copy the remote path.</Description>
+    <Company>SSH Image Paste</Company>
+    <Copyright>Copyright (c) Khaier Eddine Amamou. MIT License.</Copyright>
+    <Version>0.1.0</Version>
+    <InformationalVersion>0.1.0</InformationalVersion>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+  </PropertyGroup>
+  <PropertyGroup>
+    <!-- The authoritative Rust CLI ships beside the desktop executable. Override with -p:SshImgPasteCli=PATH. -->
+    <SshImgPasteCli Condition="'$(SshImgPasteCli)' == '' And Exists('../../rust/ssh-img-paste-cli/target/release/ssh-img-paste.exe')">../../rust/ssh-img-paste-cli/target/release/ssh-img-paste.exe</SshImgPasteCli>
+    <SshImgPasteCli Condition="'$(SshImgPasteCli)' == '' And Exists('../../rust/ssh-img-paste-cli/target/debug/ssh-img-paste.exe')">../../rust/ssh-img-paste-cli/target/debug/ssh-img-paste.exe</SshImgPasteCli>
+  </PropertyGroup>
+  <ItemGroup>
+    <Resource Include="Assets\AppIcon.ico" />
+    <InternalsVisibleTo Include="SSHImagePaste.Windows.ContractTests" />
+    <None Include="$(SshImgPasteCli)" Condition="'$(SshImgPasteCli)' != ''" Link="ssh-img-paste.exe"
+          CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Visible="false" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- WPF and Windows Forms share type names; import Forms/Drawing explicitly where used. -->
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
+    <Using Include="System.IO" />
+  </ItemGroup>
+</Project>
