@@ -35,6 +35,28 @@ public static class AppPaths
 
     public static string? ExecutablePath => Environment.ProcessPath;
 
+    /// <summary>
+    /// Shortens a path under the user's profile to an environment-variable
+    /// form, so the UI never displays the account name.
+    /// </summary>
+    public static string DisplayPath(string path)
+    {
+        foreach (var (variable, folder) in new[]
+                 {
+                     ("%LOCALAPPDATA%", Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)),
+                     ("%USERPROFILE%", Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)),
+                 })
+        {
+            if (folder.Length > 0
+                && path.StartsWith(folder, StringComparison.OrdinalIgnoreCase)
+                && (path.Length == folder.Length || path[folder.Length] is '\\' or '/'))
+            {
+                return variable + path[folder.Length..];
+            }
+        }
+        return path;
+    }
+
     public static string SshConfigPath =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".ssh", "config");
 }

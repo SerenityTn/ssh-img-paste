@@ -32,7 +32,7 @@ public partial class ProfileEditorWindow : Window
         original = mode == ProfileEditorMode.Edit ? template : null;
         this.existingIds = existingIds;
         InitializeComponent();
-        SshConfigRun.Text = AppPaths.SshConfigPath;
+        SshConfigRun.Text = AppPaths.DisplayPath(AppPaths.SshConfigPath);
 
         var editing = mode == ProfileEditorMode.Edit;
         Heading.Text = editing ? $"Edit {template?.DisplayName}" : template is null ? "Add destination" : $"Duplicate {template.DisplayName}";
