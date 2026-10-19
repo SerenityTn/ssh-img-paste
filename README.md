@@ -17,7 +17,7 @@ SSH Image Paste turns an image on your computer into a remote file path that ter
 | Platform | App | Status | Guide |
 | --- | --- | --- | --- |
 | macOS 13+ | AppKit menu-bar app and Bash CLI | Stable, Homebrew and source installs | This page |
-| Windows 10 1809+ and 11 | WPF tray app and Rust CLI | New, install from source | [Windows guide](docs/WINDOWS.md) |
+| Windows 10 1809+ and 11 | WPF tray app and Rust CLI | New, per-user installer or portable zip | [Windows guide](docs/WINDOWS.md) |
 
 <table>
   <tr>
@@ -57,7 +57,12 @@ Both editions share these features. The rest of this page covers macOS; the [Win
 
 ### Windows
 
-Build and install from source with the .NET 10 SDK and Rust, then add a destination in the profile manager. The [Windows guide](docs/WINDOWS.md) has the exact commands, requirements, and troubleshooting.
+1. Download `SSHImagePaste-Setup-<version>-x64.exe` from [Releases](https://github.com/SerenityTn/ssh-img-paste/releases).
+2. Run it. No administrator rights are needed. If SmartScreen warns, choose **More info**, then **Run anyway**; the installer is not code-signed yet.
+3. In the window that opens, add a destination: your SSH host, then **Detect** for the remote home, then **Save**.
+4. Click the tray icon to upload.
+
+Your SSH host must accept `ssh -o BatchMode=yes your-host true` without a prompt. The [Windows guide](docs/WINDOWS.md) covers requirements, the portable zip, and troubleshooting.
 
 ### Install with Homebrew (macOS)
 

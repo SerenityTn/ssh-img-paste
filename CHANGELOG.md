@@ -7,6 +7,7 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Added
 
 - Windows edition: a tray app for Windows 10 1809+ and Windows 11 with clipboard upload, region and full-screen capture, a destination switcher, a profile manager, and an uploaded-images window. See [the Windows guide](docs/WINDOWS.md).
+- Windows per-user installer (`SSHImagePaste-Setup-<version>-x64.exe`) and portable zip, built by `windows/installer/build-installer.ps1` and attached to every Windows CI run.
 - Rust CLI for Windows and Linux with profile management, connection tests, and upload list, fetch, and clean commands.
 
 ### Fixed
