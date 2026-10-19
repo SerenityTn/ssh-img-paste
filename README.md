@@ -57,7 +57,12 @@ Both editions share these features. The rest of this page covers macOS; the [Win
 
 ### Windows
 
-Run `SSHImagePaste-Setup-<version>-x64.exe`, a per-user installer that needs no administrator rights, then add a destination in the profile manager. The [Windows guide](docs/WINDOWS.md) covers the installer, the portable zip, building from source, and troubleshooting.
+1. Download `SSHImagePaste-Setup-<version>-x64.exe` from [Releases](https://github.com/SerenityTn/ssh-img-paste/releases).
+2. Run it. No administrator rights are needed. If SmartScreen warns, choose **More info**, then **Run anyway**; the installer is not code-signed yet.
+3. In the window that opens, add a destination: your SSH host, then **Detect** for the remote home, then **Save**.
+4. Click the tray icon to upload.
+
+Your SSH host must accept `ssh -o BatchMode=yes your-host true` without a prompt. The [Windows guide](docs/WINDOWS.md) covers requirements, the portable zip, and troubleshooting.
 
 ### Install with Homebrew (macOS)
 

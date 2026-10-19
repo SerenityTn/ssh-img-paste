@@ -29,7 +29,7 @@ The desktop app is a thin shell. A bundled Rust command-line tool, `ssh-img-past
 
 ## Install
 
-Run `SSHImagePaste-Setup-<version>-x64.exe`. It installs for your account only, without administrator rights, into `%LOCALAPPDATA%\Programs\SSH Image Paste`. It adds a Start menu entry, can start the app when you sign in, and registers an uninstaller under **Settings > Apps**. Running a newer setup upgrades in place and closes the running app first.
+Download `SSHImagePaste-Setup-<version>-x64.exe` from [Releases](https://github.com/SerenityTn/ssh-img-paste/releases) and run it. It installs for your account only, without administrator rights, into `%LOCALAPPDATA%\Programs\SSH Image Paste`. It adds a Start menu entry, can start the app when you sign in, and registers an uninstaller under **Settings > Apps**. Running a newer setup upgrades in place and closes the running app first.
 
 The installer is not code-signed yet, so Windows SmartScreen may say it "protected your PC". Choose **More info**, then **Run anyway**.
 
