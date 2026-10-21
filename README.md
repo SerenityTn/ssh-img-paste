@@ -18,6 +18,7 @@ SSH Image Paste turns an image on your computer into a remote file path that ter
 | --- | --- | --- | --- |
 | macOS 13+ | AppKit menu-bar app and Bash CLI | Stable, Homebrew and source installs | This page |
 | Windows 10 1809+ and 11 | WPF tray app and Rust CLI | New, per-user installer or portable zip | [Windows guide](docs/WINDOWS.md) |
+| Linux (Wayland and X11) | GTK 4 / libadwaita tray app and Rust CLI | Preview, build from source | [Linux guide](docs/LINUX.md) |
 
 <table>
   <tr>

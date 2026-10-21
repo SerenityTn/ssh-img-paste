@@ -18,7 +18,11 @@ pub const CLI_PATH_ENV: &str = "SSH_IMG_PASTE_CLI";
 pub const CONFIG_ROOT_ENV: &str = "SSH_IMG_PASTE_CONFIG_ROOT";
 
 const LOCAL_TIMEOUT: Duration = Duration::from_secs(15);
+const PROBE_TIMEOUT: Duration = Duration::from_secs(40);
+const LIST_TIMEOUT: Duration = Duration::from_secs(50);
 const UPLOAD_TIMEOUT: Duration = Duration::from_secs(120);
+const FETCH_TIMEOUT: Duration = Duration::from_secs(150);
+const CLEAN_TIMEOUT: Duration = Duration::from_secs(80);
 const MAX_OUTPUT_BYTES: usize = 4 * 1024 * 1024;
 pub const DEFAULT_RESTORE_SECONDS: u32 = 60;
 
@@ -192,6 +196,37 @@ pub enum ShotMode {
     Full,
 }
 
+impl ShotMode {
+    pub fn as_arg(self) -> &'static str {
+        match self {
+            Self::Region => "region",
+            Self::Full => "full",
+        }
+    }
+}
+
+/// Why a profile file cannot be used (`problem` in the catalog).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProfileProblem {
+    pub code: String,
+    pub field: Option<String>,
+    pub key: Option<String>,
+}
+
+impl ProfileProblem {
+    pub fn describe(&self) -> String {
+        match self.code.as_str() {
+            "dynamic_syntax" => format!(
+                "{} uses shell syntax that is never evaluated",
+                self.key.as_deref().unwrap_or("A field")
+            ),
+            "invalid_field" => format!("{} is invalid", field_label(self.field.as_deref())),
+            "unreadable" => "file is a link or cannot be read".into(),
+            _ => "cannot be used".into(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Profile {
     pub id: String,
@@ -199,13 +234,37 @@ pub struct Profile {
     pub active: bool,
     pub label: String,
     pub host: String,
+    pub remote_home: String,
+    pub remote_dir: String,
     pub shot_mode: ShotMode,
     pub restore_seconds: u32,
+    pub editable: bool,
+    pub problem: Option<ProfileProblem>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+impl Profile {
+    pub fn display_name(&self) -> &str {
+        if self.usable { &self.label } else { &self.id }
+    }
+
+    pub fn remote_root(&self) -> String {
+        format!(
+            "{}/{}",
+            self.remote_home.trim_end_matches('/'),
+            self.remote_dir.trim_end_matches('/')
+        )
+    }
+
+    /// `Label  (host)`, as in the tray's Destination menu.
+    pub fn menu_label(&self) -> String {
+        format!("{}  ({})", self.label, self.host)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Catalog {
     pub configured: bool,
+    pub config_root: String,
     pub active_profile_id: Option<String>,
     pub profiles: Vec<Profile>,
 }
@@ -218,6 +277,14 @@ impl Catalog {
             .find(|profile| profile.id == id && profile.usable)
     }
 
+    pub fn usable(&self) -> impl Iterator<Item = &Profile> {
+        self.profiles.iter().filter(|profile| profile.usable)
+    }
+
+    pub fn find(&self, id: &str) -> Option<&Profile> {
+        self.profiles.iter().find(|profile| profile.id == id)
+    }
+
     fn from_json(result: &Value) -> Self {
         let profiles = result
             .get("profiles")
@@ -226,6 +293,7 @@ impl Catalog {
             .unwrap_or_default();
         Self {
             configured: result.get("configured").and_then(Value::as_bool) == Some(true),
+            config_root: string(result, "config_root").unwrap_or_default(),
             active_profile_id: string(result, "active_profile_id"),
             profiles,
         }
@@ -241,30 +309,239 @@ impl Profile {
             Some(Value::Number(number)) => number.as_u64().and_then(|n| u32::try_from(n).ok()),
             _ => None,
         };
+        let problem = element
+            .get("problem")
+            .filter(|problem| problem.is_object())
+            .map(|problem| ProfileProblem {
+                code: string(problem, "code").unwrap_or_else(|| "unknown".into()),
+                field: string(problem, "field"),
+                key: string(problem, "key"),
+            });
         Self {
             usable: element.get("usable").and_then(Value::as_bool) == Some(true),
             active: element.get("active").and_then(Value::as_bool) == Some(true),
             label: string(element, "label").unwrap_or_else(|| id.clone()),
             host: string(element, "host").unwrap_or_default(),
+            remote_home: string(element, "remote_home").unwrap_or_default(),
+            remote_dir: string(element, "remote_dir").unwrap_or_default(),
             shot_mode: if string(element, "shot_mode").as_deref() == Some("full") {
                 ShotMode::Full
             } else {
                 ShotMode::Region
             },
             restore_seconds: restore_seconds.unwrap_or(DEFAULT_RESTORE_SECONDS),
+            editable: element.get("editable").and_then(Value::as_bool) == Some(true),
+            problem,
             id,
         }
     }
+}
+
+/// Mirrors `messages::field_label` so the model can describe problems.
+fn field_label(field: Option<&str>) -> &'static str {
+    crate::messages::field_label(field)
 }
 
 fn string(element: &Value, name: &str) -> Option<String> {
     element.get(name).and_then(Value::as_str).map(str::to_owned)
 }
 
+fn number(element: &Value, name: &str) -> i64 {
+    element.get(name).and_then(Value::as_i64).unwrap_or(0)
+}
+
 pub fn catalog(runner: &impl CliRunner) -> Result<Catalog, CliError> {
     runner
         .run(&["profiles", "list", "--detailed"], LOCAL_TIMEOUT)
         .map(|result| Catalog::from_json(&result))
+}
+
+/// Editable profile fields; `None` leaves a field out of the command.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct ProfileFields {
+    pub label: Option<String>,
+    pub host: Option<String>,
+    pub remote_home: Option<String>,
+    pub remote_dir: Option<String>,
+    pub shot_mode: Option<ShotMode>,
+    pub restore_seconds: Option<u32>,
+}
+
+impl ProfileFields {
+    pub fn arguments(&self) -> Vec<String> {
+        let mut arguments = Vec::new();
+        let mut push = |flag: &str, value: Option<String>| {
+            if let Some(value) = value {
+                arguments.push(flag.to_owned());
+                arguments.push(value);
+            }
+        };
+        push("--label", self.label.clone());
+        push("--host", self.host.clone());
+        push("--remote-home", self.remote_home.clone());
+        push("--remote-dir", self.remote_dir.clone());
+        push(
+            "--shot-mode",
+            self.shot_mode.map(|mode| mode.as_arg().to_owned()),
+        );
+        push(
+            "--restore-seconds",
+            self.restore_seconds.map(|seconds| seconds.to_string()),
+        );
+        arguments
+    }
+}
+
+fn run_owned(
+    runner: &impl CliRunner,
+    arguments: Vec<String>,
+    timeout: Duration,
+) -> Result<Value, CliError> {
+    let borrowed: Vec<&str> = arguments.iter().map(String::as_str).collect();
+    runner.run(&borrowed, timeout)
+}
+
+/// Creates a profile; returns whether it became the active destination.
+pub fn create_profile(
+    runner: &impl CliRunner,
+    id: &str,
+    fields: &ProfileFields,
+) -> Result<bool, CliError> {
+    let mut arguments = vec!["profiles".into(), "create".into(), id.to_owned()];
+    arguments.extend(fields.arguments());
+    let result = run_owned(runner, arguments, LOCAL_TIMEOUT)?;
+    Ok(result.get("activated").and_then(Value::as_bool) == Some(true))
+}
+
+pub fn update_profile(
+    runner: &impl CliRunner,
+    id: &str,
+    fields: &ProfileFields,
+) -> Result<(), CliError> {
+    let mut arguments = vec!["profiles".into(), "update".into(), id.to_owned()];
+    arguments.extend(fields.arguments());
+    run_owned(runner, arguments, LOCAL_TIMEOUT).map(drop)
+}
+
+pub fn rename_profile(runner: &impl CliRunner, old: &str, new: &str) -> Result<(), CliError> {
+    runner
+        .run(&["profiles", "rename", old, new], LOCAL_TIMEOUT)
+        .map(drop)
+}
+
+pub fn use_profile(runner: &impl CliRunner, id: &str) -> Result<(), CliError> {
+    runner
+        .run(&["profiles", "use", id], LOCAL_TIMEOUT)
+        .map(drop)
+}
+
+pub fn delete_profile(
+    runner: &impl CliRunner,
+    id: &str,
+    switch_to: Option<&str>,
+) -> Result<(), CliError> {
+    match switch_to {
+        Some(other) => runner.run(
+            &["profiles", "delete", id, "--switch-to", other],
+            LOCAL_TIMEOUT,
+        ),
+        None => runner.run(&["profiles", "delete", id], LOCAL_TIMEOUT),
+    }
+    .map(drop)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConnectionTest {
+    pub host: String,
+    pub configured_home: String,
+    pub detected_home: String,
+    pub home_matches: bool,
+}
+
+pub fn test_profile(runner: &impl CliRunner, id: &str) -> Result<ConnectionTest, CliError> {
+    let result = runner.run(&["profiles", "test", id], PROBE_TIMEOUT)?;
+    Ok(ConnectionTest {
+        host: string(&result, "host").unwrap_or_default(),
+        configured_home: string(&result, "remote_home").unwrap_or_default(),
+        detected_home: string(&result, "detected_remote_home").unwrap_or_default(),
+        home_matches: result.get("remote_home_matches").and_then(Value::as_bool) == Some(true),
+    })
+}
+
+/// Connects to `host` and returns the home directory it reports.
+pub fn probe_host(runner: &impl CliRunner, host: &str) -> Result<String, CliError> {
+    let result = runner.run(&["hosts", "probe", "--host", host], PROBE_TIMEOUT)?;
+    Ok(string(&result, "detected_remote_home").unwrap_or_default())
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RemoteUpload {
+    pub name: String,
+    pub size_bytes: i64,
+    pub modified_epoch_seconds: i64,
+    pub remote_path: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct UploadListing {
+    pub remote_directory: String,
+    pub uploads: Vec<RemoteUpload>,
+    pub skipped_rows: i64,
+    pub truncated: bool,
+}
+
+pub fn list_uploads(runner: &impl CliRunner, profile_id: &str) -> Result<UploadListing, CliError> {
+    let result = runner.run(&["uploads", "list", "--profile", profile_id], LIST_TIMEOUT)?;
+    let uploads = result
+        .get("uploads")
+        .and_then(Value::as_array)
+        .map(|uploads| {
+            uploads
+                .iter()
+                .map(|upload| RemoteUpload {
+                    name: string(upload, "name").unwrap_or_default(),
+                    size_bytes: number(upload, "size_bytes"),
+                    modified_epoch_seconds: number(upload, "modified_epoch_seconds"),
+                    remote_path: string(upload, "remote_path").unwrap_or_default(),
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    Ok(UploadListing {
+        remote_directory: string(&result, "remote_directory").unwrap_or_default(),
+        uploads,
+        skipped_rows: number(&result, "skipped_rows"),
+        truncated: result.get("truncated").and_then(Value::as_bool) == Some(true),
+    })
+}
+
+/// Downloads one upload and returns the local file the CLI wrote.
+pub fn fetch_upload(
+    runner: &impl CliRunner,
+    profile_id: &str,
+    name: &str,
+) -> Result<String, CliError> {
+    let result = runner.run(
+        &["uploads", "fetch", "--profile", profile_id, "--name", name],
+        FETCH_TIMEOUT,
+    )?;
+    Ok(string(&result, "local_path").unwrap_or_default())
+}
+
+/// Deletes every uploaded PNG on the destination; returns how many.
+pub fn clean_uploads(runner: &impl CliRunner, profile_id: &str) -> Result<i64, CliError> {
+    let result = runner.run(
+        &[
+            "uploads",
+            "clean",
+            "--profile",
+            profile_id,
+            "--confirm-profile",
+            profile_id,
+        ],
+        CLEAN_TIMEOUT,
+    )?;
+    Ok(number(&result, "deleted_count"))
 }
 
 /// Uploads one private PNG and returns the remote path. The profile is named
@@ -453,5 +730,122 @@ mod tests {
             .run(&["version"], Duration::from_secs(5))
             .expect("fake cli");
         assert_eq!(result["args"], "--config-root /srv/root version");
+    }
+
+    #[test]
+    fn catalog_reads_the_detail_fields_and_problems() {
+        let catalog = Catalog::from_json(&json!({
+            "configured": true,
+            "config_root": "/home/me/.config/ssh-img-paste",
+            "active_profile_id": "work",
+            "profiles": [
+                {"id": "work", "usable": true, "active": true, "label": "Work", "host": "w",
+                 "remote_home": "/home/me/", "remote_dir": "img-uploads/", "editable": true},
+                {"id": "manual", "usable": false, "active": false,
+                 "problem": {"code": "dynamic_syntax", "key": "SSH_HOST"}}
+            ]
+        }));
+        assert_eq!(catalog.config_root, "/home/me/.config/ssh-img-paste");
+        let work = catalog.find("work").expect("work");
+        assert_eq!(work.remote_root(), "/home/me/img-uploads");
+        assert_eq!(work.menu_label(), "Work  (w)");
+        assert!(work.editable);
+        let manual = catalog.find("manual").expect("manual");
+        assert_eq!(manual.display_name(), "manual");
+        assert_eq!(
+            manual
+                .problem
+                .as_ref()
+                .map(ProfileProblem::describe)
+                .as_deref(),
+            Some("SSH_HOST uses shell syntax that is never evaluated")
+        );
+        assert_eq!(catalog.usable().count(), 1);
+    }
+
+    #[test]
+    fn profile_fields_emit_only_present_flags() {
+        let fields = ProfileFields {
+            label: Some("Work VPS".into()),
+            shot_mode: Some(ShotMode::Full),
+            restore_seconds: Some(0),
+            ..Default::default()
+        };
+        assert_eq!(
+            fields.arguments(),
+            [
+                "--label",
+                "Work VPS",
+                "--shot-mode",
+                "full",
+                "--restore-seconds",
+                "0"
+            ]
+        );
+        assert!(ProfileFields::default().arguments().is_empty());
+    }
+
+    #[test]
+    fn mutations_send_the_documented_arguments() {
+        let runner = Recording(
+            Default::default(),
+            json!({"activated": true, "deleted_count": 3,
+            "detected_remote_home": "/home/me", "local_path": "/tmp/a.png"}),
+        );
+        let fields = ProfileFields {
+            host: Some("work".into()),
+            ..Default::default()
+        };
+        assert!(create_profile(&runner, "work", &fields).expect("create"));
+        update_profile(&runner, "work", &fields).expect("update");
+        rename_profile(&runner, "work", "job").expect("rename");
+        use_profile(&runner, "job").expect("use");
+        delete_profile(&runner, "job", Some("home")).expect("delete");
+        assert_eq!(probe_host(&runner, "work").expect("probe"), "/home/me");
+        assert_eq!(
+            fetch_upload(&runner, "job", "a.png").expect("fetch"),
+            "/tmp/a.png"
+        );
+        assert_eq!(clean_uploads(&runner, "job").expect("clean"), 3);
+        let calls: Vec<String> = runner
+            .0
+            .borrow()
+            .iter()
+            .map(|call| call.join(" "))
+            .collect();
+        assert_eq!(
+            calls,
+            [
+                "profiles create work --host work",
+                "profiles update work --host work",
+                "profiles rename work job",
+                "profiles use job",
+                "profiles delete job --switch-to home",
+                "hosts probe --host work",
+                "uploads fetch --profile job --name a.png",
+                "uploads clean --profile job --confirm-profile job",
+            ]
+        );
+    }
+
+    #[test]
+    fn upload_listing_keeps_cli_order_and_notices() {
+        let runner = Recording(
+            Default::default(),
+            json!({
+                "remote_directory": "/home/me/img-uploads",
+                "uploads": [
+                    {"name": "b.png", "size_bytes": 2048, "modified_epoch_seconds": 20, "remote_path": "/home/me/img-uploads/b.png"},
+                    {"name": "a.png", "size_bytes": 10, "modified_epoch_seconds": 10, "remote_path": "/home/me/img-uploads/a.png"}
+                ],
+                "skipped_rows": 1,
+                "truncated": true
+            }),
+        );
+        let listing = list_uploads(&runner, "work").expect("list");
+        assert_eq!(listing.uploads[0].name, "b.png");
+        assert_eq!(listing.uploads[1].size_bytes, 10);
+        assert_eq!(listing.skipped_rows, 1);
+        assert!(listing.truncated);
     }
 }

@@ -4,16 +4,37 @@
 //! otherwise. The upload half also needs the production CLI and its
 //! `fake_openssh` example, passed as absolute paths in
 //! `SSH_IMG_PASTE_E2E_CLI` and `SSH_IMG_PASTE_E2E_FAKE_OPENSSH`.
+//!
+//! It also proves the clipboard restore: the earlier image returns while the
+//! path is still ours, and is left alone once another app copies something.
 
+use ssh_img_paste_linux::capture::{CaptureError, CaptureMode, ScreenCapture};
 use ssh_img_paste_linux::cli::CliClient;
 use ssh_img_paste_linux::clipboard::{Backend, ClipboardAccess, SystemClipboard};
 use ssh_img_paste_linux::staging::StagingArea;
-use ssh_img_paste_linux::upload::{UploadOutcome, upload_clipboard};
+use ssh_img_paste_linux::upload::{
+    UploadHooks, UploadOutcome, UploadRequest, UploadSource, run_upload,
+};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
 const PNG: &[u8] = b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR\0\0\0\x01\0\0\0\x01\x08\x06\0\0\0\x1f\x15\xc4\x89\0\0\0\rIDATx\x9cc\xf8\xcf\xc0\xf0\x1f\0\x05\0\x01\xff\x89\x99=\x1d\0\0\0\0IEND\xaeB`\x82";
+
+struct NoCapture;
+
+impl ScreenCapture for NoCapture {
+    fn capture(&self, _mode: CaptureMode) -> Result<Vec<u8>, CaptureError> {
+        panic!("the clipboard holds an image, so nothing is captured")
+    }
+}
+
+struct NoHooks;
+
+impl UploadHooks for NoHooks {
+    fn progress(&self, _message: &str) {}
+    fn before_capture(&self) {}
+}
 
 /// X11 clipboard only; the session's Wayland tools are deliberately ignored.
 fn x11_clipboard() -> Option<SystemClipboard> {
@@ -101,11 +122,15 @@ fn x11_clipboard_image_uploads_and_the_remote_path_is_copied() {
     copy_image(&image);
     let read = eventually(|| clipboard.read_png().expect("read clipboard"));
     assert_eq!(read, PNG);
-    clipboard
+    let mut claim = clipboard
         .set_text("/home/me/img-uploads/round-trip.png")
         .expect("set text");
     eventually(|| clipboard_text().filter(|text| text == "/home/me/img-uploads/round-trip.png"));
     assert_eq!(clipboard.read_png().expect("read clipboard"), None);
+    assert!(claim.still_owned());
+    // Another app copying takes ownership away.
+    copy_image(&image);
+    eventually(|| (!claim.still_owned()).then_some(()));
 
     let Some((cli, fake_openssh)) = e2e_binaries() else {
         return;
@@ -138,12 +163,23 @@ fn x11_clipboard_image_uploads_and_the_remote_path_is_copied() {
     eventually(|| clipboard.read_png().expect("read clipboard"));
     let client = CliClient::new(wrapper, Some(config));
     let staging = StagingArea::at(root.path().join("staging"));
-    let outcome = upload_clipboard(&client, Ok(&clipboard), &staging);
+    let (outcome, restore) = run_upload(
+        UploadRequest {
+            source: UploadSource::Auto,
+            runner: &client,
+            clipboard: Ok(&clipboard),
+            capture: &NoCapture,
+            staging: &staging,
+        },
+        &NoHooks,
+    );
 
     let UploadOutcome::Uploaded {
-        remote_path,
-        destination,
+        ref remote_path,
+        ref destination,
         path_copied,
+        from_screenshot,
+        restore_seconds,
     } = outcome
     else {
         panic!("upload failed: {outcome:?}");
@@ -154,8 +190,15 @@ fn x11_clipboard_image_uploads_and_the_remote_path_is_copied() {
     );
     assert_eq!(destination, "Work VPS");
     assert!(path_copied);
+    assert!(!from_screenshot);
+    assert_eq!(restore_seconds, 60, "the default restore delay");
     assert_eq!(std::fs::read(&transferred).expect("transferred bytes"), PNG);
-    eventually(|| clipboard_text().filter(|text| *text == remote_path));
+    eventually(|| clipboard_text().filter(|text| text == remote_path));
+    let restore = restore.expect("the earlier image is restorable");
+    assert_eq!(restore.snapshot.mime, "image/png");
+    assert_eq!(restore.complete(&clipboard), Ok(true));
+    let restored = eventually(|| clipboard.read_png().expect("read clipboard"));
+    assert_eq!(restored, PNG, "the earlier clipboard image is back");
     let leftovers = std::fs::read_dir(staging.directory())
         .expect("staging")
         .count();

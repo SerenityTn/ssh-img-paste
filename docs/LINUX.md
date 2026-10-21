@@ -1,62 +1,121 @@
-# Linux edition (development preview)
+# Linux edition (preview)
 
-The Linux edition is a GTK 4 / libadwaita app with a StatusNotifierItem tray icon. Like the Windows edition, it is a thin shell over the Rust CLI (`ssh-img-paste`), which owns profiles and every SSH step.
+The Linux edition is a GTK 4 / libadwaita app with a tray icon. Like the Windows edition, it is a thin shell over the Rust CLI (`ssh-img-paste`), which owns profiles and every SSH step. It has the same features as the Windows tray app, adapted to Linux desktops.
 
-## What works today
+![Main window with the active destination](images/linux-main.png)
 
-- **Upload Clipboard Image**: copy an image, then click the tray icon, choose **Upload Clipboard Image**, or run `ssh-img-paste-linux --upload-clipboard`. The app uploads it to the active destination and replaces the clipboard with the remote path.
-- PNG is preferred. Other image types offered by the clipboard (JPEG, BMP, …) are converted to PNG first.
-- A desktop notification and the app window report the result, with actionable messages for common SSH failures.
+## What it does
 
-Not yet: region and full-screen capture, the profile editor, restoring the previous clipboard, and packages. Create destinations with the CLI meanwhile.
+- **Upload Clipboard Image**: uploads the clipboard image and replaces the clipboard with its remote path. If the clipboard holds no image, the app takes a screenshot instead, using the destination's "When the clipboard has no image" setting.
+  - Trigger it with a click on the tray icon, the menu item, the window button, Ctrl+V in the window, or `ssh-img-paste-linux --upload-clipboard`.
+  - PNG is used directly. Other image types (JPEG, BMP, …) are converted to PNG first.
+- **Capture Region / Capture Full Screen**: takes a screenshot, uploads it, and copies the path.
+  - Regions are picked with your desktop's own screenshot tool, much as the macOS edition uses the system picker.
+  - The app's windows hide while the screenshot is taken.
+- **Destination** submenu in the tray, and a picker in the window, to choose where uploads go.
+- **Manage Profiles…**: add, duplicate, edit, rename, delete, activate, and test destinations. Detect fills the remote home over SSH.
+- **Uploaded Images…**: lists a destination's uploads. You can open one in your image viewer, copy its remote path, or delete them all.
+- **Clipboard restore**: after the destination's delay (60 seconds by default), the earlier clipboard returns, but only if the path is still on it. If anything else was copied in the meantime, it is left alone.
+- **Notifications** report each result. Clicking one opens the main window. They are skipped while the main window has focus.
+- **Start when I sign in** adds an XDG autostart entry. The app then starts with `--background`, so only the tray icon appears.
 
 ## Requirements
 
-- A Wayland or X11 session. Clipboard access uses `wl-clipboard` on Wayland and `xclip` on X11:
+- A Wayland or X11 session.
+- **Clipboard:** `wl-clipboard` on Wayland, `xclip` on X11.
+- **Screenshots:** the XDG desktop portal (`xdg-desktop-portal` plus your desktop's backend; GNOME and KDE ship it). Without a portal, the app uses `grim` and `slurp` on wlroots compositors such as Sway and Hyprland, or `maim` or `scrot` on X11.
+- **OpenSSH client**, with key-based access to the destination through `ssh-agent` or `IdentityFile`. Passphrase prompts are not supported. Make sure `ssh -o BatchMode=yes your-host true` succeeds.
+- **Tray icon:** a StatusNotifierItem host. KDE Plasma and most panels have one; on GNOME, install the AppIndicator extension. Without a tray host, the window stays open as the app's home, and closing it quits.
 
-  ```bash
-  sudo apt install wl-clipboard xclip openssh-client
-  ```
+On Debian and Ubuntu:
 
-- Key-based SSH access to the destination (`ssh-agent` or `IdentityFile`); passphrase prompts are not supported.
-- For the tray icon on GNOME, the AppIndicator extension. Without a tray host, the window stays open as the fallback.
+```bash
+sudo apt install wl-clipboard xclip openssh-client xdg-desktop-portal
+```
 
 ## Build and run from source
 
 ```bash
+sudo apt install libgtk-4-dev libadwaita-1-dev
 cargo build --manifest-path rust/ssh-img-paste-cli/Cargo.toml --release
 cargo build --manifest-path rust/ssh-img-paste-linux/Cargo.toml --release
-export SSH_IMG_PASTE_CLI="$PWD/rust/ssh-img-paste-cli/target/release/ssh-img-paste"
-
-# One-time: add a destination and make it active.
-"$SSH_IMG_PASTE_CLI" profiles create work --label "Work VPS" --host work-ssh \
-  --remote-home /home/me --remote-dir img-uploads
-"$SSH_IMG_PASTE_CLI" profiles use work
-"$SSH_IMG_PASTE_CLI" profiles test work
-
-rust/ssh-img-paste-linux/target/release/ssh-img-paste-linux
+cp rust/ssh-img-paste-cli/target/release/ssh-img-paste \
+   rust/ssh-img-paste-linux/target/release/ssh-img-paste-linux ~/.local/bin/
+ssh-img-paste-linux
 ```
 
-The app finds the CLI through `SSH_IMG_PASTE_CLI` (an absolute path), then next to its own executable, then on `PATH`. `SSH_IMG_PASTE_CONFIG_ROOT` overrides the settings root, as on Windows.
+The app finds the CLI in this order:
 
-## Keyboard shortcut
+1. `SSH_IMG_PASTE_CLI`, if it is an absolute path.
+2. Next to the app's own executable.
+3. On `PATH`.
 
-Wayland does not let apps grab global shortcuts, so bind one in your desktop settings instead. For example, in GNOME open **Settings → Keyboard → Custom Shortcuts**, then set:
+`SSH_IMG_PASTE_CONFIG_ROOT` overrides the settings root, as on Windows.
 
-- **Command:** `/path/to/ssh-img-paste-linux --upload-clipboard`
+## Add a destination
 
-The command hands the request to the running instance over D-Bus, or starts the app if it is not running.
+The first start opens **Manage Profiles** with the editor ready.
+
+![Destination editor](images/linux-editor.png)
+
+1. Enter a display name. The profile ID is suggested from it.
+2. Enter the SSH host: a `Host` alias from `~/.ssh/config`, or `user@host`. Keep ports, keys, and jump hosts in the SSH config.
+3. Choose **Detect** to fill the remote home from the host, or type it.
+4. Keep `img-uploads` as the upload folder, or choose another folder relative to the remote home.
+5. Choose **Save**. The first destination becomes the active one.
+
+Every field is checked as you type, with the same rules as the CLI. The CLI checks everything again when it saves.
+
+![Profile manager](images/linux-profiles.png)
+
+Profile files you wrote by hand are shown as read-only. Files the app cannot use are marked **Needs attention**, with the reason.
+
+![Uploaded images](images/linux-uploads.png)
+
+## Keyboard shortcuts
+
+Wayland does not let apps grab global shortcuts, so bind them in your desktop's settings. On GNOME, open **Settings → Keyboard → Custom Shortcuts**; on KDE, open **System Settings → Shortcuts**. Bind any of these commands:
+
+| Command | Effect |
+|---|---|
+| `ssh-img-paste-linux --upload-clipboard` | Upload the clipboard image (or take a screenshot when it holds none) |
+| `ssh-img-paste-linux --capture-region` | Capture a region and upload it |
+| `ssh-img-paste-linux --capture-full` | Capture the full screen and upload it |
+
+Each command hands the request to the running app over D-Bus, or starts the app in the tray if it is not running.
+
+Other options:
 
 | Option | Effect |
 |---|---|
 | *(none)* | Open the app, or show the running instance |
-| `--upload-clipboard` | Upload the clipboard image and copy its remote path |
+| `--background` | Start in the tray without opening the window |
 | `--quit` | Quit the running instance |
 | `--help` | Show usage |
 
-## Privacy
+In the tray, a click uploads and a middle click opens the window.
 
-The clipboard image goes to a private staging file (`0600`, in a `0700` directory under `$XDG_RUNTIME_DIR`, or `~/.cache` as a fallback). The file is removed as soon as the CLI has taken its own copy. Leftovers from a crash are removed at the next start.
+## Files and privacy
+
+| What | Where |
+|---|---|
+| Profiles | `~/.config/ssh-img-paste/` (`$XDG_CONFIG_HOME`), written by the CLI |
+| Images being uploaded | `$XDG_RUNTIME_DIR/ssh-img-paste/staging`, or `~/.cache/ssh-img-paste/staging` if that is not set |
+| Autostart entry | `~/.config/autostart/io.github.serenitytn.SSHImagePaste.desktop` |
+
+- Images being uploaded are private files (`0600`) in a private folder (`0700`). Each one is deleted as soon as the CLI has made its own copy, and leftovers from a crash are removed at the next start.
+- Clipboard tools and capture tools always run with argument lists, never through a shell.
+- Some desktop portals keep their own copy of each screenshot (GNOME, for example, may save one under Pictures).
+
+## Troubleshooting
+
+| Message or symptom | Fix |
+|---|---|
+| "Clipboard support needs wl-clipboard" / "needs xclip" | Install the package it names. |
+| "No screenshot service is available" | Install `xdg-desktop-portal` and your desktop's backend, or `grim` and `slurp` (wlroots), or `maim` (X11). |
+| "The SSH key was rejected" | Run `ssh-add`, or set `IdentityFile` for the host in `~/.ssh/config`. |
+| "The host key is not trusted yet" | Run `ssh <host>` once in a terminal and accept the key. |
+| No tray icon on GNOME | Install the AppIndicator extension. The window works without it. |
 
 ## Testing
 
@@ -67,9 +126,11 @@ SSH_IMG_PASTE_E2E_CLI="$PWD/rust/ssh-img-paste-cli/target/debug/ssh-img-paste" \
 SSH_IMG_PASTE_E2E_FAKE_OPENSSH="$PWD/rust/ssh-img-paste-cli/target/debug/examples/fake_openssh" \
   xvfb-run -a cargo test --manifest-path rust/ssh-img-paste-linux/Cargo.toml
 
-# Desktop end-to-end: a forwarded --upload-clipboard against the running app.
+# Desktop end-to-end, against the running app.
 cargo build --manifest-path rust/ssh-img-paste-linux/Cargo.toml
 dbus-run-session -- xvfb-run -a tests/test-linux-desktop.sh
 ```
 
-These runs use a fake OpenSSH. They have not yet been verified on a real Wayland compositor (GNOME or KDE) or with a live SSH host.
+The desktop script uses a fake OpenSSH and `tests/fake_sni_watcher.py` in place of a desktop panel. It checks the tray menu, a tray-click upload, the clipboard restore, a full-screen capture, and `--quit`.
+
+These runs have not been verified on a real GNOME or KDE Wayland session, a real desktop portal, or a live SSH host.

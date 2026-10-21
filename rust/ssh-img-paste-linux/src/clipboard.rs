@@ -5,7 +5,7 @@
 //! reliable here. The external tools work around that and keep serving the
 //! copied path after this app exits. They always run from argument arrays.
 
-use crate::process::{self, OutputMode, ProcessError, ProcessRequest};
+use crate::process::{self, ProcessError, ProcessRequest};
 use std::ffi::OsString;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -66,8 +66,59 @@ impl ClipboardError {
 pub trait ClipboardAccess {
     /// Returns the clipboard image as PNG bytes, or `None` without an image.
     fn read_png(&self) -> Result<Option<Vec<u8>>, ClipboardError>;
-    fn set_text(&self, text: &str) -> Result<(), ClipboardError>;
+    /// Places `text` on the clipboard and returns the ownership claim.
+    fn set_text(&self, text: &str) -> Result<ClipboardClaim, ClipboardError>;
+    /// Captures the current contents so they can be restored later.
+    fn snapshot(&self) -> Option<ClipboardSnapshot>;
+    fn restore(&self, snapshot: &ClipboardSnapshot) -> Result<ClipboardClaim, ClipboardError>;
+    fn read_text(&self) -> Option<String>;
 }
+
+/// One clipboard representation worth putting back.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClipboardSnapshot {
+    pub mime: String,
+    pub bytes: Vec<u8>,
+}
+
+/// Proof that this app still owns the clipboard. The copy tool runs in the
+/// foreground and exits as soon as another client takes the selection, so a
+/// live owner process plays the role of the Windows sequence number.
+#[derive(Debug)]
+pub struct ClipboardClaim {
+    owner: Option<std::process::Child>,
+}
+
+impl ClipboardClaim {
+    /// A claim that can never be confirmed (fakes, failed spawns).
+    pub fn untracked() -> Self {
+        Self { owner: None }
+    }
+
+    pub fn still_owned(&mut self) -> bool {
+        self.owner
+            .as_mut()
+            .is_some_and(|owner| matches!(owner.try_wait(), Ok(None)))
+    }
+}
+
+impl Drop for ClipboardClaim {
+    /// Reaps the owner once another client takes the selection.
+    fn drop(&mut self) {
+        if let Some(mut owner) = self.owner.take() {
+            std::thread::spawn(move || {
+                let _ = owner.wait();
+            });
+        }
+    }
+}
+
+const TEXT_TYPES: &[&str] = &[
+    "text/plain;charset=utf-8",
+    "UTF8_STRING",
+    "text/plain",
+    "STRING",
+];
 
 /// Converts a non-PNG clipboard image to PNG. Supplied by the desktop shell,
 /// which owns the image decoders.
@@ -189,22 +240,75 @@ impl ClipboardAccess for SystemClipboard {
             .ok_or_else(|| ClipboardError::UnsupportedImage(mime.to_owned()))
     }
 
-    fn set_text(&self, text: &str) -> Result<(), ClipboardError> {
-        let arguments: &[&str] = match self.backend {
-            Backend::Wayland => &["--type", "text/plain;charset=utf-8"],
-            Backend::X11 => &["-selection", "clipboard", "-in"],
+    fn set_text(&self, text: &str) -> Result<ClipboardClaim, ClipboardError> {
+        // X11 terminals paste UTF8_STRING; wl-copy adds that alias itself.
+        let mime = match self.backend {
+            Backend::Wayland => "text/plain;charset=utf-8",
+            Backend::X11 => "UTF8_STRING",
         };
-        let mut request = self.request(&self.copy, arguments, WRITE_TIMEOUT);
-        request.stdin = Some(text.as_bytes().to_vec());
-        request.output = OutputMode::Discard;
-        let output = process::run(&request).map_err(tool_error)?;
-        if output.status.success() {
-            Ok(())
-        } else {
-            Err(ClipboardError::Tool(
-                "The remote path could not be placed on the clipboard.".into(),
-            ))
+        self.own(mime, text.as_bytes()).map_err(|_| {
+            ClipboardError::Tool("The remote path could not be placed on the clipboard.".into())
+        })
+    }
+
+    fn snapshot(&self) -> Option<ClipboardSnapshot> {
+        let types = self.list_types().ok()?;
+        let mime = preferred_image_type(&types)
+            .or_else(|| {
+                TEXT_TYPES
+                    .iter()
+                    .copied()
+                    .find(|text| types.iter().any(|mime| mime == text))
+            })?
+            .to_owned();
+        let bytes = self.read_type(&mime).ok()?;
+        Some(ClipboardSnapshot { mime, bytes })
+    }
+
+    fn restore(&self, snapshot: &ClipboardSnapshot) -> Result<ClipboardClaim, ClipboardError> {
+        self.own(&snapshot.mime, &snapshot.bytes)
+    }
+
+    fn read_text(&self) -> Option<String> {
+        let types = self.list_types().ok()?;
+        let mime = TEXT_TYPES
+            .iter()
+            .find(|text| types.iter().any(|mime| mime == *text))?;
+        let bytes = self.read_type(mime).ok()?;
+        String::from_utf8(bytes).ok()
+    }
+}
+
+impl SystemClipboard {
+    /// Starts a foreground owner serving `bytes` as `mime`, then waits until
+    /// the selection is visibly ours (both tools take it asynchronously).
+    fn own(&self, mime: &str, bytes: &[u8]) -> Result<ClipboardClaim, ClipboardError> {
+        let arguments: Vec<&str> = match self.backend {
+            Backend::Wayland => vec!["--foreground", "--type", mime],
+            Backend::X11 => vec!["-quiet", "-selection", "clipboard", "-target", mime, "-in"],
+        };
+        let owner = process::spawn_owner(&self.copy, &arguments, bytes).map_err(|error| {
+            ClipboardError::Tool(format!("The clipboard tool could not run: {error}"))
+        })?;
+        let mut claim = ClipboardClaim { owner: Some(owner) };
+        let deadline = std::time::Instant::now() + WRITE_TIMEOUT;
+        while std::time::Instant::now() < deadline {
+            if !claim.still_owned() {
+                return Err(ClipboardError::Tool(
+                    "The clipboard tool exited early.".into(),
+                ));
+            }
+            if self
+                .list_types()
+                .is_ok_and(|types| types.iter().any(|offered| offered == mime))
+            {
+                return Ok(claim);
+            }
+            std::thread::sleep(Duration::from_millis(25));
         }
+        Err(ClipboardError::Tool(
+            "The clipboard did not accept the new contents in time.".into(),
+        ))
     }
 }
 

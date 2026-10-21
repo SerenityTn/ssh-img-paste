@@ -1,22 +1,7 @@
-use ssh_img_paste_linux::{TrayAction, tray_actions};
-
-#[test]
-fn tray_model_lists_the_planned_primary_actions() {
-    assert_eq!(
-        tray_actions(),
-        vec![
-            TrayAction::UploadClipboard,
-            TrayAction::CaptureRegion,
-            TrayAction::CaptureFullScreen,
-            TrayAction::ManageProfiles,
-            TrayAction::Quit,
-        ]
-    );
-}
+use ssh_img_paste_linux::{LaunchRequest, parse_launch};
 
 #[test]
 fn launch_options_map_to_requests() {
-    use ssh_img_paste_linux::{LaunchRequest, parse_launch};
     let parse = |arguments: &[&str]| {
         parse_launch(
             &arguments
@@ -30,6 +15,15 @@ fn launch_options_map_to_requests() {
         parse(&["--upload-clipboard"]),
         Ok(LaunchRequest::UploadClipboard)
     );
+    assert_eq!(
+        parse(&["--capture-region"]),
+        Ok(LaunchRequest::CaptureRegion)
+    );
+    assert_eq!(
+        parse(&["--capture-full"]),
+        Ok(LaunchRequest::CaptureFullScreen)
+    );
+    assert_eq!(parse(&["--background"]), Ok(LaunchRequest::Background));
     assert_eq!(parse(&["--quit"]), Ok(LaunchRequest::Quit));
     assert_eq!(parse(&["--smoke-test"]), Ok(LaunchRequest::SmokeTest));
     assert_eq!(parse(&["-h"]), Ok(LaunchRequest::Help));

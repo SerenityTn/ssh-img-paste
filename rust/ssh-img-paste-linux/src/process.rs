@@ -18,24 +18,14 @@ const POLL_INTERVAL: Duration = Duration::from_millis(20);
 const TERMINATE_GRACE: Duration = Duration::from_secs(3);
 const READER_GRACE: Duration = Duration::from_secs(2);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum OutputMode {
-    /// Capture stdout and stderr up to `max_output_bytes` each.
-    Capture,
-    /// Discard output. Required for `wl-copy` and `xclip -i`, which fork a
-    /// background owner of the selection that would otherwise hold the pipes
-    /// open after the foreground process exits.
-    Discard,
-}
-
 #[derive(Debug, Clone)]
 pub struct ProcessRequest {
     pub program: PathBuf,
     pub arguments: Vec<OsString>,
     pub stdin: Option<Vec<u8>>,
     pub timeout: Duration,
+    /// Capture bound for stdout and for stderr.
     pub max_output_bytes: usize,
-    pub output: OutputMode,
 }
 
 impl ProcessRequest {
@@ -46,7 +36,6 @@ impl ProcessRequest {
             stdin: None,
             timeout,
             max_output_bytes: 64 * 1024,
-            output: OutputMode::Capture,
         }
     }
 }
@@ -76,11 +65,9 @@ pub fn run(request: &ProcessRequest) -> Result<ProcessOutput, ProcessError> {
         } else {
             Stdio::null()
         })
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
         .process_group(0);
-    match request.output {
-        OutputMode::Capture => command.stdout(Stdio::piped()).stderr(Stdio::piped()),
-        OutputMode::Discard => command.stdout(Stdio::null()).stderr(Stdio::null()),
-    };
 
     let mut child = command.spawn().map_err(ProcessError::Spawn)?;
     let writer = request.stdin.clone().and_then(|bytes| {
@@ -188,6 +175,30 @@ fn collect(reader: Option<ReaderResult>) -> (Vec<u8>, bool) {
     reader
         .and_then(|receiver| receiver.recv_timeout(READER_GRACE).ok())
         .unwrap_or_default()
+}
+
+/// Starts a long-lived clipboard owner: its own process group (so it outlives
+/// this app), no captured output, `stdin` written and closed. The caller keeps
+/// the `Child` to learn when the owner exits.
+pub fn spawn_owner(
+    program: &std::path::Path,
+    arguments: &[&str],
+    stdin: &[u8],
+) -> std::io::Result<Child> {
+    let mut child = Command::new(program)
+        .args(arguments)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .process_group(0)
+        .spawn()?;
+    if let Some(mut pipe) = child.stdin.take() {
+        let bytes = stdin.to_vec();
+        thread::spawn(move || {
+            let _ = pipe.write_all(&bytes);
+        });
+    }
+    Ok(child)
 }
 
 /// Finds an executable by name on `PATH`.
