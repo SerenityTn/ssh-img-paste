@@ -1,7 +1,14 @@
 use adw::prelude::*;
-use gtk::glib;
+use gtk::{gdk, gio, glib};
 use ksni::TrayMethods;
-use ssh_img_paste_linux::TrayAction;
+use ssh_img_paste_linux::{
+    LaunchRequest, TrayAction, USAGE,
+    cli::{self, CliClient, CliError},
+    clipboard::{ClipboardError, SystemClipboard},
+    messages, parse_launch,
+    staging::StagingArea,
+    upload::{self, UploadOutcome},
+};
 use std::{
     cell::{Cell, RefCell},
     rc::Rc,
@@ -27,6 +34,94 @@ enum UiEvent {
     Action(TrayAction),
     TrayAvailable,
     TrayUnavailable,
+    UploadFinished(UploadOutcome),
+    DestinationLoaded(Destination),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Destination {
+    Active { label: String, host: String },
+    NotConfigured,
+    Unavailable(String),
+}
+
+impl Destination {
+    fn describe(&self) -> String {
+        match self {
+            Self::Active { label, host } => format!("Destination: {label} ({host})"),
+            Self::NotConfigured => "No destination yet. Create one in a terminal with \
+                                    \"ssh-img-paste profiles create\"."
+                .into(),
+            Self::Unavailable(message) => message.clone(),
+        }
+    }
+}
+
+/// Platform adapters resolved once at startup and shared with worker threads.
+struct Services {
+    cli: Result<CliClient, CliError>,
+    clipboard: Result<SystemClipboard, ClipboardError>,
+    staging: Option<StagingArea>,
+}
+
+impl Services {
+    fn detect() -> Self {
+        let env = |name: &str| std::env::var_os(name);
+        let staging = StagingArea::locate(env);
+        if let Some(staging) = &staging {
+            staging.remove_stale();
+        }
+        Self {
+            cli: CliClient::locate(env, std::env::current_exe().ok()),
+            clipboard: SystemClipboard::detect(env, Some(convert_to_png)),
+            staging,
+        }
+    }
+
+    fn upload(&self) -> UploadOutcome {
+        let cli = match &self.cli {
+            Ok(cli) => cli,
+            Err(error) => return UploadOutcome::Failed(messages::describe(error)),
+        };
+        let Some(staging) = &self.staging else {
+            return UploadOutcome::Failed(
+                "No private staging folder is available. Set XDG_RUNTIME_DIR or HOME.".into(),
+            );
+        };
+        upload::upload_clipboard(cli, self.clipboard.as_ref(), staging)
+    }
+
+    fn destination(&self) -> Destination {
+        let cli = match &self.cli {
+            Ok(cli) => cli,
+            Err(error) => return Destination::Unavailable(messages::describe(error)),
+        };
+        match cli::catalog(cli) {
+            Ok(catalog) => match catalog.active() {
+                Some(profile) => Destination::Active {
+                    label: profile.label.clone(),
+                    host: profile.host.clone(),
+                },
+                None => Destination::NotConfigured,
+            },
+            Err(error) if error.code == "not_configured" => Destination::NotConfigured,
+            Err(error) => Destination::Unavailable(messages::describe(&error)),
+        }
+    }
+}
+
+/// Decodes a non-PNG clipboard image (JPEG, BMP, …) with GDK's loaders.
+/// Textures are immutable, so this is safe off the main thread.
+fn convert_to_png(bytes: &[u8]) -> Option<Vec<u8>> {
+    let texture = gdk::Texture::from_bytes(&glib::Bytes::from(bytes)).ok()?;
+    Some(texture.save_to_png_bytes().to_vec())
+}
+
+fn spawn_worker(events: &Sender<UiEvent>, work: impl FnOnce() -> UiEvent + Send + 'static) {
+    let events = events.clone();
+    std::thread::spawn(move || {
+        let _ = events.send(work());
+    });
 }
 
 #[derive(Debug)]
@@ -61,10 +156,11 @@ impl ksni::Tray for LinuxTray {
         true
     }
 
+    /// A single click uploads, as on macOS and Windows.
     fn activate(&mut self, _x: i32, _y: i32) {
         let _ = self
             .events
-            .send(UiEvent::Action(TrayAction::ManageProfiles));
+            .send(UiEvent::Action(TrayAction::UploadClipboard));
     }
 
     fn menu(&self) -> Vec<ksni::MenuItem<Self>> {
@@ -72,13 +168,18 @@ impl ksni::Tray for LinuxTray {
 
         vec![
             StandardItem {
-                label: "Upload Clipboard Image (not connected)".into(),
-                enabled: false,
+                label: "Upload Clipboard Image".into(),
+                icon_name: "edit-paste-symbolic".into(),
+                activate: Box::new(|tray: &mut LinuxTray| {
+                    let _ = tray
+                        .events
+                        .send(UiEvent::Action(TrayAction::UploadClipboard));
+                }),
                 ..Default::default()
             }
             .into(),
             SubMenu {
-                label: "Capture (not connected)".into(),
+                label: "Capture (coming soon)".into(),
                 enabled: false,
                 submenu: vec![
                     StandardItem {
@@ -188,6 +289,7 @@ fn start_tray(events: Sender<UiEvent>) -> TrayRuntime {
 struct AppState {
     window: adw::ApplicationWindow,
     tray: TrayRuntime,
+    events: Sender<UiEvent>,
 }
 
 impl AppState {
@@ -196,36 +298,82 @@ impl AppState {
     }
 }
 
+type SharedState = Rc<RefCell<Option<AppState>>>;
+
+/// Builds the tray and window on first use and returns the event sender.
+/// Only the first start presents the window, so a shortcut-driven upload
+/// does not pop it up every time.
+fn ensure_started(app: &adw::Application, state: &SharedState) -> Sender<UiEvent> {
+    if let Some(state) = state.borrow().as_ref() {
+        return state.events.clone();
+    }
+    let (sender, receiver) = mpsc::channel();
+    let tray = start_tray(sender.clone());
+    let services = Arc::new(Services::detect());
+    let (window, _event_source) = build_window(app, receiver, sender.clone(), services);
+    window.present();
+    *state.borrow_mut() = Some(AppState {
+        window,
+        tray,
+        events: sender.clone(),
+    });
+    sender
+}
+
 fn build_window(
     app: &adw::Application,
     receiver: Receiver<UiEvent>,
+    events: Sender<UiEvent>,
+    services: Arc<Services>,
 ) -> (adw::ApplicationWindow, glib::SourceId) {
     let status = gtk::Label::builder()
-        .label("Development preview — upload and capture adapters are not connected yet")
+        .label("Copy an image, then upload it to get its remote path.")
         .wrap(true)
         .xalign(0.0)
         .build();
-    status.add_css_class("dim-label");
+
+    let destination = gtk::Label::builder()
+        .label("Checking destination…")
+        .wrap(true)
+        .xalign(0.0)
+        .build();
+    destination.add_css_class("dim-label");
+
+    let remote_path = gtk::Label::builder()
+        .selectable(true)
+        .wrap(true)
+        .wrap_mode(gtk::pango::WrapMode::Char)
+        .xalign(0.0)
+        .visible(false)
+        .build();
+    remote_path.add_css_class("monospace");
 
     let tray_status = gtk::Label::builder()
         .label("Checking desktop tray support…")
         .wrap(true)
         .xalign(0.0)
         .build();
+    tray_status.add_css_class("dim-label");
 
     let upload = gtk::Button::with_label("Upload Clipboard Image");
     upload.add_css_class("suggested-action");
+    upload.connect_clicked({
+        let events = events.clone();
+        move |_| {
+            let _ = events.send(UiEvent::Action(TrayAction::UploadClipboard));
+        }
+    });
     let region = gtk::Button::with_label("Capture Region");
     let full = gtk::Button::with_label("Capture Full Screen");
-    for button in [&upload, &region, &full] {
+    for button in [&region, &full] {
         button.set_sensitive(false);
-        button.set_tooltip_text(Some("Adapter under development"));
+        button.set_tooltip_text(Some("Screen capture is the next Linux slice"));
     }
     let profiles = gtk::Button::with_label("Manage Profiles");
-    profiles.connect_clicked({
-        let status = status.clone();
-        move |_| status.set_label("Profile editor is the next desktop slice")
-    });
+    profiles.set_sensitive(false);
+    profiles.set_tooltip_text(Some(
+        "Use \"ssh-img-paste profiles\" in a terminal until the profile editor lands",
+    ));
 
     let actions = gtk::Box::new(gtk::Orientation::Vertical, 12);
     actions.append(&upload);
@@ -245,15 +393,17 @@ fn build_window(
     content.set_margin_start(24);
     content.set_margin_end(24);
     content.append(&title);
+    content.append(&destination);
     content.append(&status);
-    content.append(&tray_status);
+    content.append(&remote_path);
     content.append(&actions);
+    content.append(&tray_status);
 
     let window = adw::ApplicationWindow::builder()
         .application(app)
         .title("SSH Image Paste")
         .default_width(440)
-        .default_height(410)
+        .default_height(460)
         .content(&content)
         .build();
     let tray_available = Rc::new(Cell::new(false));
@@ -271,8 +421,21 @@ fn build_window(
         }
     });
 
+    let refresh_destination = {
+        let events = events.clone();
+        let services = services.clone();
+        move || {
+            let services = services.clone();
+            spawn_worker(&events, move || {
+                UiEvent::DestinationLoaded(services.destination())
+            });
+        }
+    };
+    refresh_destination();
+
     let weak_window = window.downgrade();
     let app = app.clone();
+    let uploading = Cell::new(false);
     let event_source = glib::timeout_add_local(Duration::from_millis(50), move || {
         loop {
             match receiver.try_recv() {
@@ -285,12 +448,41 @@ fn build_window(
                     app.quit();
                     return glib::ControlFlow::Break;
                 }
+                Ok(UiEvent::Action(TrayAction::UploadClipboard)) => {
+                    if uploading.replace(true) {
+                        status.set_label("An upload is already in progress.");
+                        continue;
+                    }
+                    upload.set_sensitive(false);
+                    status.set_label("Uploading the clipboard image…");
+                    let services = services.clone();
+                    spawn_worker(&events, move || UiEvent::UploadFinished(services.upload()));
+                }
                 Ok(UiEvent::Action(_)) => {
-                    status.set_label("This preview action is not connected yet");
+                    status.set_label("Screen capture is not connected yet.");
+                }
+                Ok(UiEvent::UploadFinished(outcome)) => {
+                    uploading.set(false);
+                    upload.set_sensitive(true);
+                    status.set_label(&outcome.summary());
+                    if let UploadOutcome::Uploaded {
+                        remote_path: path, ..
+                    } = &outcome
+                    {
+                        remote_path.set_label(path);
+                        remote_path.set_visible(true);
+                    }
+                    app.send_notification(Some("upload"), &upload_notification(&outcome));
+                    // The upload may have revealed a changed or removed profile.
+                    refresh_destination();
+                }
+                Ok(UiEvent::DestinationLoaded(loaded)) => {
+                    destination.set_label(&loaded.describe());
                 }
                 Ok(UiEvent::TrayAvailable) => {
                     tray_available.set(true);
-                    tray_status.set_label("Tray icon registered with this desktop");
+                    tray_status
+                        .set_label("Tray icon registered. Click it to upload the clipboard image.");
                 }
                 Ok(UiEvent::TrayUnavailable) => {
                     tray_available.set(false);
@@ -307,35 +499,91 @@ fn build_window(
     (window, event_source)
 }
 
+fn upload_notification(outcome: &UploadOutcome) -> gio::Notification {
+    let (title, body) = match outcome {
+        UploadOutcome::Uploaded {
+            remote_path,
+            destination,
+            path_copied,
+        } => (
+            format!("Uploaded to {destination}"),
+            if *path_copied {
+                remote_path.clone()
+            } else {
+                outcome.summary()
+            },
+        ),
+        UploadOutcome::NoImage { .. } | UploadOutcome::NoDestination => {
+            ("Nothing uploaded".to_owned(), outcome.summary())
+        }
+        UploadOutcome::Failed(message) => ("Upload failed".to_owned(), message.clone()),
+    };
+    let notification = gio::Notification::new(&title);
+    notification.set_body(Some(&body));
+    notification
+}
+
 fn should_hide_window_on_close(tray_available: bool) -> bool {
     tray_available
 }
 
-fn main() {
-    let smoke_test = std::env::args().any(|argument| argument == "--smoke-test");
+fn main() -> glib::ExitCode {
+    // Invalid options and --help are answered here, before any instance is
+    // contacted, so the message reaches the terminal that asked.
+    let arguments: Vec<String> = std::env::args().skip(1).collect();
+    match parse_launch(&arguments) {
+        Ok(LaunchRequest::Help) => {
+            print!("{USAGE}");
+            return glib::ExitCode::SUCCESS;
+        }
+        Err(message) => {
+            eprint!("{message}\n\n{USAGE}");
+            return glib::ExitCode::from(2);
+        }
+        Ok(_) => {}
+    }
+
     let app = adw::Application::builder()
         .application_id("io.github.serenitytn.SSHImagePaste")
+        .flags(gio::ApplicationFlags::HANDLES_COMMAND_LINE)
         .build();
-    let state: Rc<RefCell<Option<AppState>>> = Rc::new(RefCell::new(None));
+    let state: SharedState = Rc::new(RefCell::new(None));
 
     app.connect_activate({
         let state = state.clone();
         move |app| {
-            if let Some(state) = state.borrow().as_ref() {
+            let existed = state.borrow().is_some();
+            ensure_started(app, &state);
+            if existed && let Some(state) = state.borrow().as_ref() {
                 state.window.present();
-                return;
             }
-
-            let (sender, receiver) = mpsc::channel();
-            let tray = start_tray(sender);
-            let (window, _event_source) = build_window(app, receiver);
-            window.present();
-            *state.borrow_mut() = Some(AppState { window, tray });
-
-            if smoke_test {
-                let app = app.clone();
-                glib::timeout_add_local_once(Duration::from_millis(1_500), move || app.quit());
+        }
+    });
+    // Runs in the primary instance, also for invocations forwarded over D-Bus.
+    app.connect_command_line({
+        let state = state.clone();
+        move |app, command_line| {
+            let arguments: Vec<String> = command_line
+                .arguments()
+                .iter()
+                .skip(1)
+                .map(|argument| argument.to_string_lossy().into_owned())
+                .collect();
+            match parse_launch(&arguments) {
+                Ok(LaunchRequest::Open | LaunchRequest::Help) => app.activate(),
+                Ok(LaunchRequest::UploadClipboard) => {
+                    let _ = ensure_started(app, &state)
+                        .send(UiEvent::Action(TrayAction::UploadClipboard));
+                }
+                Ok(LaunchRequest::Quit) => app.quit(),
+                Ok(LaunchRequest::SmokeTest) => {
+                    app.activate();
+                    let app = app.clone();
+                    glib::timeout_add_local_once(Duration::from_millis(1_500), move || app.quit());
+                }
+                Err(_) => return glib::ExitCode::from(2),
             }
+            glib::ExitCode::SUCCESS
         }
     });
     app.connect_shutdown({
@@ -347,7 +595,7 @@ fn main() {
         }
     });
 
-    app.run_with_args::<&str>(&[]);
+    app.run()
 }
 
 #[cfg(test)]
