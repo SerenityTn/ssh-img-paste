@@ -36,6 +36,7 @@ Build one contract-first Rust core and CLI for Windows and Linux.
 - Wayland clipboard through `wl-paste`/`wl-copy`; X11 through `xclip` in the first CLI adapter, with all commands invoked as arrays.
 - Optional StatusNotifierItem integration; core workflows must remain usable without tray support.
 - XDG config/cache/state/runtime paths; reject relative XDG overrides.
+- As built in 0.1.0: the desktop app shells out to the CLI like the Windows edition. The `ashpd` screenshot portal comes first, with `grim`/`slurp`, `maim`, or `scrot` as fallbacks. The copy tool runs as a foreground owner so a clipboard restore only happens while the path is still ours. The app ships as a release archive with a per-user `linux/install.sh`.
 
 ## Rust core responsibilities
 

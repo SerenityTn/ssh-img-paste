@@ -15,6 +15,9 @@ on:
       - "tests/test_xplat.py"
       - "tests/test_linux_e2e.py"
       - "tests/test-cross-platform-contract.sh"
+      - "tests/test-linux-desktop.sh"
+      - "tests/fake_sni_watcher.py"
+      - "linux/**"
       - "pyproject.toml"
       - ".github/workflows/cross-platform.yml"
 
@@ -40,7 +43,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y dbus-x11 libadwaita-1-dev libgtk-4-dev openssh-server scrot xvfb
+          sudo apt-get install -y dbus-x11 libadwaita-1-dev libgtk-4-dev openssh-server python3-gi scrot xclip xvfb
           sudo mkdir -p /run/sshd
       - name: Verify Bash profile contract fixtures
         if: runner.os == 'Linux'
@@ -55,14 +58,47 @@ jobs:
       - name: Run Ubuntu X11 and SCP end-to-end test
         if: runner.os == 'Linux'
         run: python -m unittest tests.test_linux_e2e -v
-      - name: Build and test Linux desktop shell
+      - name: Build and test Linux desktop app
         if: runner.os == 'Linux'
+        env:
+          SSH_IMG_PASTE_E2E_CLI: ${{ github.workspace }}/rust/ssh-img-paste-cli/target/debug/ssh-img-paste
+          SSH_IMG_PASTE_E2E_FAKE_OPENSSH: ${{ github.workspace }}/rust/ssh-img-paste-cli/target/debug/examples/fake_openssh
         run: |
-          cargo test --locked --manifest-path rust/ssh-img-paste-linux/Cargo.toml
+          cargo build --locked --manifest-path rust/ssh-img-paste-cli/Cargo.toml --bin ssh-img-paste --example fake_openssh
+          xvfb-run -a -s '-screen 0 1024x768x24 -nolisten tcp' \
+            cargo test --locked --manifest-path rust/ssh-img-paste-linux/Cargo.toml
           cargo build --locked --manifest-path rust/ssh-img-paste-linux/Cargo.toml
           timeout 10s dbus-run-session -- xvfb-run -a -s '-screen 0 1024x768x24 -nolisten tcp' \
             rust/ssh-img-paste-linux/target/debug/ssh-img-paste-linux --smoke-test
+          timeout 120s dbus-run-session -- xvfb-run -a -s '-screen 0 1024x768x24 -nolisten tcp' \
+            tests/test-linux-desktop.sh
       - name: Install experimental Python tracer
         run: python -m pip install .
       - name: Verify installed entry point
         run: ssh-img-paste-xplat --help
+
+  linux-package:
+    name: Linux release archive
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libadwaita-1-dev libgtk-4-dev
+      - name: Build the archive
+        run: linux/package.sh
+      - name: Install from the archive into a throwaway home
+        run: |
+          work="$(mktemp -d)"
+          tar -C "$work" -xzf dist/ssh-img-paste-linux-*-x86_64.tar.gz
+          HOME="$work/home" "$work"/ssh-img-paste-linux-*-x86_64/install.sh
+          "$work/home/.local/bin/ssh-img-paste" version
+          "$work/home/.local/bin/ssh-img-paste-linux" --help
+          HOME="$work/home" "$work"/ssh-img-paste-linux-*-x86_64/install.sh --uninstall
+          test ! -e "$work/home/.local/lib/ssh-img-paste"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ssh-img-paste-linux-x86_64
+          path: dist/
+          if-no-files-found: error

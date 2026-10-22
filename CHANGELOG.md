@@ -9,6 +9,8 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Windows edition: a tray app for Windows 10 1809+ and Windows 11 with clipboard upload, region and full-screen capture, a destination switcher, a profile manager, and an uploaded-images window. See [the Windows guide](docs/WINDOWS.md).
 - Windows per-user installer (`SSHImagePaste-Setup-<version>-x64.exe`) and portable zip, built by `windows/installer/build-installer.ps1` and attached to every Windows CI run.
 - Rust CLI for Windows and Linux with profile management, connection tests, and upload list, fetch, and clean commands.
+- Linux edition 0.1.0: a GTK 4 / libadwaita tray app for Wayland and X11 with the Windows edition's features — clipboard upload with a screenshot fallback, region and full-screen capture through the XDG desktop portal (or `grim`/`slurp`, `maim`, or `scrot`), a destination switcher in the tray, a profile manager and editor, an uploaded-images window, clipboard restore, start at sign-in, and `--upload-clipboard`, `--capture-region`, and `--capture-full` for desktop keyboard shortcuts. See [the Linux guide](docs/LINUX.md).
+- Linux release archive (`ssh-img-paste-linux-<version>-x86_64.tar.gz`) with a per-user `install.sh`, built by `linux/package.sh` and attached to every Linux CI run.
 
 ### Fixed
 
