@@ -17,6 +17,7 @@ on:
       - "tests/test-cross-platform-contract.sh"
       - "tests/test-linux-desktop.sh"
       - "tests/fake_sni_watcher.py"
+      - "linux/**"
       - "pyproject.toml"
       - ".github/workflows/cross-platform.yml"
 
@@ -75,3 +76,29 @@ jobs:
         run: python -m pip install .
       - name: Verify installed entry point
         run: ssh-img-paste-xplat --help
+
+  linux-package:
+    name: Linux release archive
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libadwaita-1-dev libgtk-4-dev
+      - name: Build the archive
+        run: linux/package.sh
+      - name: Install from the archive into a throwaway home
+        run: |
+          work="$(mktemp -d)"
+          tar -C "$work" -xzf dist/ssh-img-paste-linux-*-x86_64.tar.gz
+          HOME="$work/home" "$work"/ssh-img-paste-linux-*-x86_64/install.sh
+          "$work/home/.local/bin/ssh-img-paste" version
+          "$work/home/.local/bin/ssh-img-paste-linux" --help
+          HOME="$work/home" "$work"/ssh-img-paste-linux-*-x86_64/install.sh --uninstall
+          test ! -e "$work/home/.local/lib/ssh-img-paste"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ssh-img-paste-linux-x86_64
+          path: dist/
+          if-no-files-found: error

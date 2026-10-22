@@ -1,0 +1,23 @@
+[Desktop Entry]
+Type=Application
+Name=SSH Image Paste
+Comment=Upload a clipboard image or screenshot over SSH and copy the remote path
+Exec=@BINDIR@/ssh-img-paste-linux
+Icon=io.github.serenitytn.SSHImagePaste
+Terminal=false
+Categories=Utility;Network;
+Keywords=screenshot;ssh;upload;clipboard;scp;
+StartupNotify=false
+Actions=upload-clipboard;capture-region;capture-full;
+
+[Desktop Action upload-clipboard]
+Name=Upload Clipboard Image
+Exec=@BINDIR@/ssh-img-paste-linux --upload-clipboard
+
+[Desktop Action capture-region]
+Name=Capture Region
+Exec=@BINDIR@/ssh-img-paste-linux --capture-region
+
+[Desktop Action capture-full]
+Name=Capture Full Screen
+Exec=@BINDIR@/ssh-img-paste-linux --capture-full

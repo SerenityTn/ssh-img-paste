@@ -1,4 +1,4 @@
-# Linux edition (preview)
+# Linux edition
 
 The Linux edition is a GTK 4 / libadwaita app with a tray icon. Like the Windows edition, it is a thin shell over the Rust CLI (`ssh-img-paste`), which owns profiles and every SSH step. It has the same features as the Windows tray app, adapted to Linux desktops.
 
@@ -32,6 +32,30 @@ On Debian and Ubuntu:
 ```bash
 sudo apt install wl-clipboard xclip openssh-client xdg-desktop-portal
 ```
+
+## Install
+
+The release archive runs on x86_64 distributions with GTK 4.6+ and libadwaita 1.5+: Ubuntu 24.04 or newer, Debian 13, Fedora 40 or newer.
+
+1. Download `ssh-img-paste-linux-<version>-x86_64.tar.gz` and `SHA256SUMS.txt` from [Releases](https://github.com/SerenityTn/ssh-img-paste/releases).
+2. Verify and extract the archive:
+
+   ```bash
+   sha256sum --check --ignore-missing SHA256SUMS.txt
+   tar -xzf ssh-img-paste-linux-*-x86_64.tar.gz
+   ```
+
+3. Install the app for your user, then open **SSH Image Paste** from the applications menu:
+
+   ```bash
+   cd ssh-img-paste-linux-*-x86_64
+   ./install.sh                             # into ~/.local
+   sudo ./install.sh --prefix /usr/local    # or for every user
+   ```
+
+`install.sh` puts the app and its CLI side by side in `PREFIX/lib/ssh-img-paste`, links `ssh-img-paste-linux` and `ssh-img-paste` into `PREFIX/bin`, and adds a menu entry and the icon. It never overwrites a different program that is already in `PREFIX/bin`. It names any clipboard or SSH package that is still missing.
+
+To remove it, run `./install.sh --uninstall`, adding `--prefix` if you used one. It removes the app, the links, the menu entry, and the sign-in entry. Your destinations in `~/.config/ssh-img-paste` are kept.
 
 ## Build and run from source
 
@@ -133,4 +157,6 @@ dbus-run-session -- xvfb-run -a tests/test-linux-desktop.sh
 
 The desktop script uses a fake OpenSSH and `tests/fake_sni_watcher.py` in place of a desktop panel. It checks the tray menu, a tray-click upload, the clipboard restore, a full-screen capture, and `--quit`.
 
-These runs have not been verified on a real GNOME or KDE Wayland session, a real desktop portal, or a live SSH host.
+`linux/package.sh` builds the release archive and `SHA256SUMS.txt` in `dist/`. CI builds one on every run and attaches it to the run.
+
+Version 0.1.0 has been tested on XFCE (X11), with its tray. GNOME and KDE on Wayland, where screenshots go through the desktop portal, have not been tested yet; reports are welcome.

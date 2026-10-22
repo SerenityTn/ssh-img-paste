@@ -2,23 +2,24 @@
   <img src="assets/AppIcon.svg" width="128" alt="SSH Image Paste app icon">
 </p>
 <h1 align="center">SSH Image Paste</h1>
-<p align="center">Send a clipboard image or screenshot from macOS or Windows to any SSH host, then paste the remote path into your terminal.</p>
+<p align="center">Send a clipboard image or screenshot from macOS, Windows, or Linux to any SSH host, then paste the remote path into your terminal.</p>
 <p align="center">
   <a href="https://github.com/SerenityTn/ssh-img-paste/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/SerenityTn/ssh-img-paste/actions/workflows/ci.yml/badge.svg"></a>
   <a href="https://github.com/SerenityTn/ssh-img-paste/actions/workflows/windows-desktop.yml"><img alt="Windows CI" src="https://github.com/SerenityTn/ssh-img-paste/actions/workflows/windows-desktop.yml/badge.svg"></a>
   <a href="https://github.com/SerenityTn/ssh-img-paste/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/SerenityTn/ssh-img-paste"></a>
   <a href="#requirements"><img alt="macOS 13 or newer" src="https://img.shields.io/badge/macOS-13%2B-111827?logo=apple"></a>
   <a href="docs/WINDOWS.md"><img alt="Windows 10 1809 or newer" src="https://img.shields.io/badge/Windows-10%201809%2B%20%7C%2011-0078D4"></a>
+  <a href="docs/LINUX.md"><img alt="Linux, Wayland and X11" src="https://img.shields.io/badge/Linux-Wayland%20%7C%20X11-E95420?logo=linux&logoColor=white"></a>
   <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/github/license/SerenityTn/ssh-img-paste"></a>
 </p>
 
-SSH Image Paste turns an image on your computer into a remote file path that terminal tools can consume. It ships as a native macOS menu-bar app with a Bash CLI, and as a Windows tray app with a Rust CLI. No clipboard watcher, cloud account, daemon on the server, or proprietary protocol is required. Transfers use your existing OpenSSH setup.
+SSH Image Paste turns an image on your computer into a remote file path that terminal tools can consume. It ships as a native macOS menu-bar app with a Bash CLI, and as Windows and Linux tray apps on a shared Rust CLI. No clipboard watcher, cloud account, daemon on the server, or proprietary protocol is required. Transfers use your existing OpenSSH setup.
 
 | Platform | App | Status | Guide |
 | --- | --- | --- | --- |
 | macOS 13+ | AppKit menu-bar app and Bash CLI | Stable, Homebrew and source installs | This page |
 | Windows 10 1809+ and 11 | WPF tray app and Rust CLI | New, per-user installer or portable zip | [Windows guide](docs/WINDOWS.md) |
-| Linux (Wayland and X11) | GTK 4 / libadwaita tray app and Rust CLI | Preview, build from source | [Linux guide](docs/LINUX.md) |
+| Linux (Wayland and X11) | GTK 4 / libadwaita tray app and Rust CLI | New, release archive or source build | [Linux guide](docs/LINUX.md) |
 
 <table>
   <tr>
@@ -29,11 +30,15 @@ SSH Image Paste turns an image on your computer into a remote file path that ter
     <td><img src="docs/images/windows-main.png" alt="Windows main window with the active destination"><br><sub>Windows main window</sub></td>
     <td><img src="docs/images/windows-uploads.png" alt="Windows uploaded images list"><br><sub>Windows uploaded images</sub></td>
   </tr>
+  <tr>
+    <td><img src="docs/images/linux-main.png" alt="Linux main window with the active destination"><br><sub>Linux main window</sub></td>
+    <td><img src="docs/images/linux-profiles.png" alt="Linux profile manager with fixture destinations"><br><sub>Linux profile manager</sub></td>
+  </tr>
 </table>
 
 ## How it works
 
-1. Click the menu-bar icon on macOS, or the tray icon on Windows.
+1. Click the menu-bar icon on macOS, or the tray icon on Windows and Linux.
 2. If the clipboard holds an image, it is uploaded. Otherwise you drag to capture a screen region.
 3. The PNG goes to your SSH host over SCP, and its remote path is copied to your clipboard.
 4. Paste the path into your SSH session. Your previous clipboard comes back after 60 seconds.
@@ -42,16 +47,16 @@ Text paste crosses an SSH session; image paste does not. Terminal agents and CLI
 
 ## Features
 
-Both editions share these features. The rest of this page covers macOS; the [Windows guide](docs/WINDOWS.md) covers the Windows tray app, its installation, and its file locations.
+All three editions share these features. The rest of this page covers macOS; the [Windows guide](docs/WINDOWS.md) and the [Linux guide](docs/LINUX.md) cover those tray apps, their installation, and their file locations.
 
-- Native AppKit menu-bar app for macOS 13 and newer, and a WPF tray app for Windows 10 1809+ and Windows 11.
+- Native AppKit menu-bar app for macOS 13 and newer, a WPF tray app for Windows 10 1809+ and Windows 11, and a GTK 4 / libadwaita tray app for Linux on Wayland and X11.
 - Clipboard image upload plus explicit region and full-screen capture.
 - Multiple named SSH profiles with persistent active-destination selection.
 - Native profile manager with add, edit, duplicate, rename, activate, connection test, and delete actions.
 - Uploaded-image listing, download/open, and confirmed remote cleanup.
 - Secure literal profile parser; profile files are never sourced or evaluated.
 - Existing `~/.ssh/config`, keychain, and SSH-agent support.
-- Apple Silicon and Intel source builds on macOS; x64 builds on Windows.
+- Apple Silicon and Intel source builds on macOS; x64 builds on Windows; x86_64 builds on Linux.
 - Standalone CLI with stable machine-readable profile output.
 
 ## Quick start
@@ -64,6 +69,15 @@ Both editions share these features. The rest of this page covers macOS; the [Win
 4. Click the tray icon to upload.
 
 Your SSH host must accept `ssh -o BatchMode=yes your-host true` without a prompt. The [Windows guide](docs/WINDOWS.md) covers requirements, the portable zip, and troubleshooting.
+
+### Linux
+
+1. Install the clipboard and SSH tools: `sudo apt install wl-clipboard xclip openssh-client` (Ubuntu 24.04+, Debian 13+; Fedora 40+ has the same packages).
+2. Download `ssh-img-paste-linux-<version>-x86_64.tar.gz` from [Releases](https://github.com/SerenityTn/ssh-img-paste/releases), extract it, and run `./install.sh`. It installs into `~/.local` without root.
+3. Open **SSH Image Paste** from your applications menu and add a destination: your SSH host, then **Detect**, then **Save**.
+4. Click the tray icon to upload, or bind `ssh-img-paste-linux --upload-clipboard` to a keyboard shortcut.
+
+The tray icon needs a StatusNotifierItem host (KDE, XFCE, and most panels; the AppIndicator extension on GNOME). The [Linux guide](docs/LINUX.md) covers screenshots, shortcuts, source builds, and troubleshooting.
 
 ### Install with Homebrew (macOS)
 
@@ -142,7 +156,7 @@ See [the complete CLI reference](docs/CLI.md) for profile creation, updates, ren
 
 ## Configuration (macOS)
 
-Named profiles live under the following paths. Windows keeps them in `%LOCALAPPDATA%\SSH Image Paste`; see the [Windows guide](docs/WINDOWS.md#files-and-settings).
+Named profiles live under the following paths, on Linux too. Windows keeps them in `%LOCALAPPDATA%\SSH Image Paste`; see the [Windows guide](docs/WINDOWS.md#files-and-settings).
 
 ```text
 ~/.config/ssh-img-paste/profiles/<id>.env
@@ -167,7 +181,7 @@ Current source and Homebrew builds are compiled locally and ad-hoc signed. A sta
 
 ## Requirements
 
-These are the macOS requirements. For Windows, see the [Windows guide](docs/WINDOWS.md#requirements).
+These are the macOS requirements. For Windows, see the [Windows guide](docs/WINDOWS.md#requirements); for Linux, the [Linux guide](docs/LINUX.md#requirements).
 
 - macOS 13 or newer, Apple Silicon or Intel.
 - Xcode Command Line Tools for source builds.
